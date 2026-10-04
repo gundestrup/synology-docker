@@ -5,7 +5,7 @@
 >
 > Originally forked from [markdumay/synology-docker](https://github.com/markdumay/synology-docker)
 
-![Last Commit][synology-docker-last-commit] ![Issues][synology-docker-issues] ![Pull Requests][synology-docker-pulls] ![License][synology-docker-license]
+![Last Commit][synology-docker-last-commit] ![Issues][synology-docker-issues] ![Pull Requests][synology-docker-pulls] ![License][synology-docker-license] [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gundestrup/synology-docker)
 
 ## Why this exists
 
@@ -113,7 +113,7 @@ docker-compose up -d --force-recreate
 
 Re‑run `syno_docker_list_containers.sh` until **everything** says `local`.
 
-> Containers created via `docker run` will show a _best‑guess_ recreate command. Verify it before running.
+> Containers created via `docker run` will show a _best‑guess_ recreate command. Its environment values are deliberately hidden; replace the required `--env-file /REVIEW_AND_CREATE_ENV_FILE_BEFORE_RUNNING` with a reviewed, private environment file before use. Verify all remaining settings before running it.
 
 ### Step 3: Upgrade Docker & Compose
 
@@ -157,8 +157,42 @@ sudo ./syno_docker_update.sh [OPTIONS] COMMAND
 | `--docker VERSION`  | Target Docker version     |
 | `--compose VERSION` | Target Compose version    |
 | `--backup NAME`     | Backup file name          |
-| `--force`           | Skip compatibility checks |
-| `--stage`           | Download only, no install |
+| `--force`           | Skip confirmation and compatibility checks; allow an explicitly requested downgrade |
+| `--stage`           | Download and extract without installing; print the retained staging path |
+
+## Testing
+
+Run the mocked regression tests in a disposable Docker container:
+
+```bash
+docker build -t synology-docker-tests -f tests/Dockerfile .
+docker run --rm -v "$PWD:/workspace:ro" synology-docker-tests
+```
+
+The supported test scope is DSM major versions 6 and 7 only. These disposable tests cover version selection, stage/backup/restore failure paths, DSM 6/7 service failures, forwarding edits, verified module downloads, AppArmor rollback, and safe container-command rendering. They mock DSM; they do not modify a live Docker service or substitute for kernel and package tests on a NAS.
+
+Before running the updater on a NAS, check its runtime prerequisites with:
+
+```bash
+sh tests/check-dsm-runtime.sh 29
+```
+
+Replace `29` with the planned Docker Engine major version. The updater requires `/bin/bash`, `jq`, `curl`, `docker`, `realpath`, `readlink -f`, `mktemp -d`, and GNU-compatible `timeout --foreground`, in addition to standard shell utilities. It also needs DSM's `synopkg` (DSM 7) or `synoservicectl` (DSM 6). For a Docker Engine 28+ target, the probe additionally checks `sha256sum`, `insmod`, `lsmod`, `iptables`, and `/bin/get_key_value`. Automatic module downloads are pinned to an upstream commit and checked against platform-specific SHA-256 hashes; new kernel/platform combinations need reviewed hashes or manually installed modules. `/bin/sh` may be a different shell; run scripts through their shebangs rather than invoking Bash scripts with `sh`. Semgrep and SonarQube are review tools for a development host or CI, not runtime dependencies on the NAS.
+
+The [virtual-dsm project](https://github.com/vdsm/virtual-dsm) can boot selected DSM 7 `.pat` releases, but requires a Linux KVM host; its README says Docker Desktop on macOS is unsupported. Its DSM 6 path has an [open D-Bus stability issue](https://github.com/vdsm/virtual-dsm/issues/1122), so validate DSM 6 on real hardware. The project further restricts use of Virtual DSM to official Synology hardware. Use actual NAS hardware for package, service-control, and kernel-module integration testing; keep every test to DSM 6 or DSM 7.
+
+### Manual integration matrix
+
+Run these checks only in a disposable, snapshot-backed environment with the Synology Docker package already installed:
+
+| DSM major | Suggested coverage | Environment |
+| ---------- | ------------------ | ----------- |
+| 6 | Latest DSM 6.2.4 update | Real Synology hardware |
+| 7 | DSM 7.1 and 7.2 | Real hardware or supported Virtual DSM/KVM host |
+
+For each environment, run `sh tests/check-dsm-runtime.sh 29` (using the planned Engine major), record `docker -v` and `docker-compose -v`, start a small representative workload, then run `sudo ./syno_docker_update.sh update`. Verify the service is started, both version commands succeed, and the workload is healthy. Test rollback separately with a named backup and verify the restored versions. Do not treat a successful Virtual DSM run as coverage of physical kernel-module or driver compatibility.
+
+An update stops rather than silently downgrading if release detection fails or an automatic target is older than the installed version. To deliberately downgrade during `update`, specify `--docker VERSION` or `--compose VERSION` together with `--force`; an older offline Docker archive passed to `install PATH` also requires `--force`. Required module and AppArmor preparation is still performed. Backups are private and are never overwritten. `--stage update` leaves downloads in the printed private directory so they can be inspected or passed to `install PATH`. If a change fails after the service has stopped, the script reports the backup path and exits nonzero; it does not automatically restart mixed binaries. Diagnose the failure and restore the backup with `sudo ./syno_docker_update.sh --backup /path/to/backup.tgz restore` before retrying.
 
 ## Contributing
 
