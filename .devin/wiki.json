@@ -1,0 +1,31 @@
+{
+  "repo_notes": [
+    { "content": "Unofficial shell-script toolchain (fork lineage: telnetdoogie-labs <- markdumay/synology-docker) to update Docker Engine and Docker Compose on Synology NAS beyond what DSM's Container Manager ships. Repeatable, reversible, with built-in rollback." },
+    { "content": "High-level flow: download official Docker + Compose binaries -> back up existing install -> stop Docker safely -> replace binaries/config -> restart. Rollback restores the backup." },
+    { "content": "Escape hatch for Synology's legacy 'db' log driver — Portainer persists the original logging driver per container, so 'db'-created containers stay broken after upgrade and must be recreated with 'local'." },
+    { "content": "Not supported by Synology: after upgrading, the Container Manager UI no longer works reliably for managing containers or logs. Requires SSH + sudo. Nvidia runtime users must re-run nvidia-ctk runtime configure or restart the driver after the script." },
+    { "content": "See README.md for the full step-by-step usage, warnings, and DSM version guidance." }
+  ],
+  "pages": [
+    {
+      "title": "Overview and Usage",
+      "purpose": "What the scripts do end-to-end, supported DSM versions, installation/invocation steps, and the DSM/kernel version prerequisites",
+      "page_notes": [{ "content": "Include Mermaid diagram: download -> backup -> stop -> replace -> restart (rollback path to backup)" }]
+    },
+    {
+      "title": "Upgrade Mechanics",
+      "purpose": "Script internals: binary download/verification, backup layout, service stop/start on Synology, config migration including the db -> local log driver switch",
+      "parent": "Overview and Usage"
+    },
+    {
+      "title": "Rollback",
+      "purpose": "How rollback restores the pre-upgrade Docker install and when to use it",
+      "parent": "Overview and Usage"
+    },
+    {
+      "title": "Caveats and Ecosystem",
+      "purpose": "Portainer logging-driver persistence, Container Manager UI degradation, Nvidia runtime reconfiguration, and unsupported-by-Synology risks",
+      "parent": "Overview and Usage"
+    }
+  ]
+}
