@@ -167,7 +167,17 @@ export MOCK_LIST_MODE
 next_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$next_dir" --container-dirs --next)
 [[ "$next_output" == *"No containers still use the removed 'db' logger"* ]]
 jq -e '.containers["review-test"].conversion == "updated" and .containers["review-test"].requires_recreate == false' "$next_dir/compose-export-manifest.json" >/dev/null
-printf 'Single-container, manifest, and next-container Compose export tests passed\n'
+
+recovery_dir=$(mktemp -d)
+MOCK_LIST_MODE=unmanaged-db
+export MOCK_LIST_MODE
+recovery_output=$("$repo_dir/syno_docker_recovery.sh" next "$recovery_dir" --fresh-anonymous-volumes)
+[[ "$recovery_output" == *'Next: use the validate action'* ]]
+[[ -f "$recovery_dir/review-test/review-test.docker-compose.yml" ]]
+grep -Fq '"/storage:rw"' "$recovery_dir/review-test/review-test.docker-compose.yml"
+manifest_output=$("$repo_dir/syno_docker_recovery.sh" manifest "$recovery_dir")
+[[ "$manifest_output" == *'review-test'* && "$manifest_output" == *'logger=db'* && "$manifest_output" == *'written'* ]]
+printf 'Single-container, manifest, recovery-menu, and next-container Compose export tests passed\n'
 
 for script in "$repo_dir"/*.sh; do
   bash -n "$script"

@@ -70,6 +70,28 @@ git clone https://github.com/telnetdoogie-labs/synology-docker
 cd synology-docker
 ```
 
+## Guided recovery and update menu
+
+The easiest entry point is:
+
+```bash
+./syno_docker_recovery.sh
+```
+
+The menu provides the recommended order: runtime preflight, container inventory, guided `db`-logger export, Compose validation, explicitly confirmed recreation, manifest review, backup, update, and restore. It does not delete a container, run an update, or restore a backup without typed confirmation. Environment values remain in private `.env` files and are not shown.
+
+The same actions can be run non-interactively, for example:
+
+```bash
+./syno_docker_recovery.sh preflight 29
+./syno_docker_recovery.sh list
+./syno_docker_recovery.sh next /volume1/docker/recover
+./syno_docker_recovery.sh validate /volume1/docker/recover crashplan
+./syno_docker_recovery.sh manifest /volume1/docker/recover
+```
+
+`recreate`, `update`, and `restore` are deliberately available but require confirmation because they remove a container record, replace Docker binaries, or roll back configuration.
+
 ## 🚀 First‑time upgrade (do this once, carefully)
 
 > [!NOTE]
