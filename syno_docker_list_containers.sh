@@ -1,6 +1,7 @@
 #!/bin/bash
 
-readonly SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+readonly SCRIPT_DIR
 
 # Store container information in an array
 containers_info=()
@@ -14,7 +15,11 @@ for c in $(docker ps -q); do
 done
 
 # Sort the array based on the second field (compose location)
-IFS=$'\n' sorted_containers_info=($(printf "%s\n" "${containers_info[@]}" | sort -t " " -k 2))
+sorted_containers_info=()
+while IFS= read -r info; do
+  [ -n "$info" ] || continue
+  sorted_containers_info+=("$info")
+done < <(printf "%s\n" "${containers_info[@]}" | sort -t " " -k 2)
 # Original with -u - this unfortunately hides portainer containers.
 # IFS=$'\n' sorted_containers_info=($(printf "%s\n" "${containers_info[@]}" | sort -t -u " " -k 2))
 
@@ -23,12 +28,13 @@ max_container_length=0
 max_location_length=0
 max_logger_length=7
 for info in "${sorted_containers_info[@]}"; do
-  container=$(echo "$info" | awk '{print $1}')
-  location=$(echo "$info" | awk '{print $2}')
-  logger=$(echo "$info" | awk '{print $3}')
-  [ ${#container} -gt $max_container_length ] && max_container_length=${#container}
-  [ ${#location} -gt $max_location_length ] && max_location_length=${#location}
-  [ ${#logger} -gt $max_logger_length ] && max_logger_length=${#logger}
+  container=${info%% *}
+  logger=${info##* }
+  location=${info#* }
+  location=${location% *}
+  [ "${#container}" -gt "$max_container_length" ] && max_container_length=${#container}
+  [ "${#location}" -gt "$max_location_length" ] && max_location_length=${#location}
+  [ "${#logger}" -gt "$max_logger_length" ] && max_logger_length=${#logger}
 done
 
 # Print the header
@@ -43,10 +49,11 @@ printf "%-${max_container_length}s  %-${max_location_length}s %-${max_logger_len
 docker_managed=()
 # Print the sorted container information
 for info in "${sorted_containers_info[@]}"; do
-  container=$(echo "$info" | awk '{print $1}')
-  location=$(echo "$info" | awk '{print $2}') # for spaces>>    | sed -e 's/^[^ ]* //')
-  logger=$(echo "$info" | awk '{print $3}')
-  if [ "$location" != "$NOT_COMPOSE" ] && [ ! -f $location ];then
+  container=${info%% *}
+  logger=${info##* }
+  location=${info#* }
+  location=${location% *}
+  if [ "$location" != "$NOT_COMPOSE" ] && [ ! -f "$location" ];then
   location="${MAYBE_PORTAINER}"
   fi
   if [ "$location" == "$NOT_COMPOSE" ]; then
@@ -69,7 +76,7 @@ if [ ${#docker_managed[@]} -gt 0 ]; then
   echo "----------------------------------------------------"
   echo "Container: ${container}"
   echo "----------------------------------------------------"
-  echo -e "$docker_command"
+  printf '%s\n' "$docker_command"
   echo
   done
 fi
