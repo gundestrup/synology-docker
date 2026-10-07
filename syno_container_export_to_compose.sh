@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--force] [--volume-root PATH] EXPORT.json [OUTPUT_DIR]" >&2
+  echo "Usage: $0 [--force] [--volume-root PATH] EXPORT_OR_INSPECT.json [OUTPUT_DIR]" >&2
   exit 1
 }
 
@@ -48,7 +48,72 @@ output_dir=${positional[1]:-$(dirname "$input")}
 mkdir -p "$output_dir" || fail "Could not create output directory: $output_dir"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
-record=$(jq 'if type == "array" then .[0] else . end' "$input") || fail "Invalid JSON export"
+record=$(jq '
+  def docker_inspect_to_export:
+    {
+      name: (.Name | ltrimstr("/")),
+      image: .Config.Image,
+      cmd: .Config.Cmd,
+      entrypoint: .Config.Entrypoint,
+      enable_restart_policy: ((.HostConfig.RestartPolicy.Name // "no") != "no"),
+      restart_policy: (.HostConfig.RestartPolicy.Name // "no"),
+      restart_maximum_retry_count: (.HostConfig.RestartPolicy.MaximumRetryCount // 0),
+      network_mode: (if .HostConfig.NetworkMode == "default" and ((.NetworkSettings.Networks // {}) | keys) == ["bridge"] then "bridge" else .HostConfig.NetworkMode end),
+      use_host_network: (.HostConfig.NetworkMode == "host"),
+      network: ((.NetworkSettings.Networks // {}) | keys | map({name: .})),
+      env_variables: ((.Config.Env // []) | map(if contains("=") then {key: split("=")[0], value: sub("^[^=]*="; "")} else {key: ., value: ""} end)),
+      port_bindings: (((.HostConfig.PortBindings // {}) | to_entries | map(. as $entry | (.value // [{}]) | map({
+          container_port: ($entry.key | split("/")[0] | tonumber),
+          type: ($entry.key | split("/")[1] // "tcp"),
+          host_port: (.HostPort // ""),
+          host_ip: (.HostIp // "")
+        }))) | add // []),
+      volume_bindings: ((.Mounts // []) | map(select(.Type != "tmpfs") | {
+          host_volume_file: (if .Type == "volume" then .Name else .Source end),
+          named_volume: (.Type == "volume"),
+          absolute_host_path: (.Type == "bind"),
+          mount_point: .Destination,
+          type: (if .RW == false then "ro" else "rw" end)
+        })),
+      tmpfs: ((.Mounts // []) | map(select(.Type == "tmpfs") | .Destination + (if .RW == false then ":ro" else "" end))),
+      labels: (.Config.Labels // {}),
+      CapAdd: (.HostConfig.CapAdd // []),
+      CapDrop: (.HostConfig.CapDrop // []),
+      devices: ((.HostConfig.Devices // []) | map({path_on_host: .PathOnHost, path_in_container: .PathInContainer, cgroup_permissions: .CgroupPermissions})),
+      privileged: (.HostConfig.Privileged // false),
+      tty: (.Config.Tty // false),
+      stdin_open: (.Config.OpenStdin // false),
+      hostname: (.Config.Hostname // ""),
+      domainname: (.Config.Domainname // ""),
+      user: (.Config.User // ""),
+      working_dir: (.Config.WorkingDir // ""),
+      memory_limit: (.HostConfig.Memory // 0),
+      shm_size: (.HostConfig.ShmSize // null),
+      read_only: (.HostConfig.ReadonlyRootfs // false),
+      oom_kill_disable: (.HostConfig.OomKillDisable // null),
+      runtime: (.HostConfig.Runtime // null),
+      uts: (.HostConfig.UtsMode // null),
+      ipc: (.HostConfig.IpcMode // null),
+      pid: (.HostConfig.PidMode // null),
+      cgroupns: (.HostConfig.CgroupnsMode // null),
+      userns: (.HostConfig.UsernsMode // null),
+      stop_signal: (.Config.StopSignal // null),
+      stop_timeout: (.Config.StopTimeout // null),
+      healthcheck: (.Config.Healthcheck // null),
+      security_opt: (.HostConfig.SecurityOpt // []),
+      dns: (.HostConfig.Dns // []),
+      dns_search: (.HostConfig.DnsSearch // []),
+      extra_hosts: (.HostConfig.ExtraHosts // []),
+      group_add: (.HostConfig.GroupAdd // []),
+      links: (.HostConfig.Links // []),
+      sysctls: (.HostConfig.Sysctls // {}),
+      storage_opt: (.HostConfig.StorageOpt // {}),
+      ulimits: ((.HostConfig.Ulimits // []) | map({name: .Name, soft: .Soft, hard: .Hard})),
+      inspect_source: true
+    };
+  (if type == "array" then .[0] else . end)
+  | if has("Config") and has("HostConfig") then docker_inspect_to_export else . end
+' "$input") || fail "Invalid JSON export"
 name=$(printf '%s\n' "$record" | jq -r '.name // .Name // empty')
 image=$(printf '%s\n' "$record" | jq -r '.image // .Image // empty')
 [ -n "$name" ] || fail "Export does not contain a container name"
@@ -63,6 +128,7 @@ cleanup() {
   rm -f "$compose_temp" "$env_temp"
 }
 trap cleanup EXIT
+volume_names=''
 
 if [ "$force" != 'true' ] && { [ -e "$compose_file" ] || [ -e "$env_file" ]; }; then
   fail "Output already exists; use --force: $compose_file or $env_file"
@@ -79,9 +145,25 @@ fi
     printf '    env_file:\n      - %s\n' "$(yaml_string "./${name}.env")"
   fi
 
-  if [ "$(printf '%s\n' "$record" | jq -r '.enable_restart_policy // false')" = 'true' ]; then
-    printf '    restart: unless-stopped\n'
-  fi
+  restart_policy=$(printf '%s\n' "$record" | jq -r '.restart_policy // empty')
+  restart_count=$(printf '%s\n' "$record" | jq -r '.restart_maximum_retry_count // 0')
+  case "$restart_policy" in
+    always|unless-stopped)
+      printf '    restart: %s\n' "$restart_policy"
+      ;;
+    on-failure)
+      if [ "$restart_count" -gt 0 ]; then
+        printf '    restart: %s\n' "$(yaml_string "on-failure:$restart_count")"
+      else
+        printf '    restart: on-failure\n'
+      fi
+      ;;
+    *)
+      if [ "$(printf '%s\n' "$record" | jq -r '.enable_restart_policy // false')" = 'true' ]; then
+        printf '    restart: unless-stopped\n'
+      fi
+      ;;
+  esac
   if [ "$(printf '%s\n' "$record" | jq -r '.privileged // false')" = 'true' ]; then
     printf '    privileged: true\n'
   fi
@@ -92,12 +174,22 @@ fi
     printf '    stdin_open: true\n'
   fi
 
-  for field in hostname domainname user working_dir; do
+  for field in hostname domainname user working_dir runtime uts ipc pid cgroupns userns stop_signal shm_size; do
     value=$(printf '%s\n' "$record" | jq -r --arg field "$field" '.[$field] // empty')
     if [ -n "$value" ]; then
       printf '    %s: %s\n' "$field" "$(yaml_string "$value")"
     fi
   done
+  if [ "$(printf '%s\n' "$record" | jq -r '.read_only // false')" = 'true' ]; then
+    printf '    read_only: true\n'
+  fi
+  if [ "$(printf '%s\n' "$record" | jq -r '.oom_kill_disable // empty')" = 'true' ]; then
+    printf '    oom_kill_disable: true\n'
+  fi
+  stop_timeout=$(printf '%s\n' "$record" | jq -r '.stop_timeout // empty')
+  if [ -n "$stop_timeout" ]; then
+    printf '    stop_grace_period: %ss\n' "$stop_timeout"
+  fi
 
   entrypoint_json=$(printf '%s\n' "$record" | jq -c '.entrypoint // null')
   entrypoint_type=$(printf '%s\n' "$entrypoint_json" | jq -r 'type')
@@ -109,6 +201,16 @@ fi
   elif [ "$entrypoint_type" != 'null' ] && [ "$entrypoint_json" != '""' ]; then
     printf '    entrypoint: %s\n' "$entrypoint_json"
   fi
+
+  for list_field in dns dns_search extra_hosts security_opt group_add tmpfs links; do
+    if [ "$(printf '%s\n' "$record" | jq -r --arg field "$list_field" '.[$field] | length')" -gt 0 ]; then
+      printf '    %s:\n' "$list_field"
+      while IFS= read -r item; do
+        [ -n "$item" ] || continue
+        printf '      - %s\n' "$(yaml_string "$item")"
+      done < <(printf '%s\n' "$record" | jq -r --arg field "$list_field" '.[$field][]? | tostring')
+    fi
+  done
 
   network_mode=$(printf '%s\n' "$record" | jq -r '.network_mode // empty')
   network_names=''
@@ -137,9 +239,15 @@ fi
     while IFS= read -r binding; do
       container_port=$(printf '%s\n' "$binding" | jq -r '.container_port // empty')
       host_port=$(printf '%s\n' "$binding" | jq -r '.host_port // empty')
+      host_ip=$(printf '%s\n' "$binding" | jq -r '.host_ip // empty')
       protocol=$(printf '%s\n' "$binding" | jq -r '.type // "tcp"')
       [ -n "$container_port" ] || fail "Port binding is missing container_port"
-      if [ -n "$host_port" ]; then
+      if [ -n "$host_ip" ]; then
+        if [[ "$host_ip" == *:* && "$host_ip" != \[*\] ]]; then
+          host_ip="[$host_ip]"
+        fi
+        port_mapping="${host_ip}:${host_port}:${container_port}/${protocol}"
+      elif [ -n "$host_port" ]; then
         port_mapping="${host_port}:${container_port}/${protocol}"
       else
         port_mapping="${container_port}/${protocol}"
@@ -154,17 +262,23 @@ fi
       host_path=$(printf '%s\n' "$binding" | jq -r '.host_volume_file // empty')
       container_path=$(printf '%s\n' "$binding" | jq -r '.mount_point // empty')
       access=$(printf '%s\n' "$binding" | jq -r '.type // "rw"')
+      named_volume=$(printf '%s\n' "$binding" | jq -r '.named_volume // false')
+      absolute_host_path=$(printf '%s\n' "$binding" | jq -r '.absolute_host_path // false')
       [ -n "$host_path" ] && [ -n "$container_path" ] || fail "Volume binding is missing a host path or mount point"
-      case "$host_path" in
-        /volume*|/dev/*|/run/*)
-          ;;
-        /*)
-          host_path="${volume_root%/}/${host_path#/}"
-          ;;
-        *)
-          fail "Unsupported relative volume path: $host_path"
-          ;;
-      esac
+      if [ "$named_volume" = 'true' ]; then
+        volume_names="${volume_names}${host_path}"$'\n'
+      elif [ "$absolute_host_path" != 'true' ]; then
+        case "$host_path" in
+          /volume*|/dev/*|/run/*)
+            ;;
+          /*)
+            host_path="${volume_root%/}/${host_path#/}"
+            ;;
+          *)
+            fail "Unsupported relative volume path: $host_path"
+            ;;
+        esac
+      fi
       volume_mapping="${host_path}:${container_path}:${access}"
       printf '      - %s\n' "$(yaml_string "$volume_mapping")"
     done < <(printf '%s\n' "$record" | jq -c '.volume_bindings[]?')
@@ -202,6 +316,63 @@ fi
     done < <(printf '%s\n' "$record" | jq -c '.devices[]?')
   fi
 
+  for map_field in sysctls storage_opt; do
+    if [ "$(printf '%s\n' "$record" | jq -r --arg field "$map_field" '.[$field] | length')" -gt 0 ]; then
+      printf '    %s:\n' "$map_field"
+      while IFS= read -r item; do
+        key=$(printf '%s\n' "$item" | jq -r '.key')
+        value=$(printf '%s\n' "$item" | jq -r '.value | tostring')
+        printf '      %s: %s\n' "$(yaml_string "$key")" "$(yaml_string "$value")"
+      done < <(printf '%s\n' "$record" | jq -c --arg field "$map_field" '.[$field] | to_entries[]?')
+    fi
+  done
+
+  if [ "$(printf '%s\n' "$record" | jq -r '.ulimits | length')" -gt 0 ]; then
+    printf '    ulimits:\n'
+    while IFS= read -r ulimit_entry; do
+      limit_name=$(printf '%s\n' "$ulimit_entry" | jq -r '.name')
+      soft_limit=$(printf '%s\n' "$ulimit_entry" | jq -r '.soft // empty')
+      hard_limit=$(printf '%s\n' "$ulimit_entry" | jq -r '.hard // empty')
+      printf '      %s:\n' "$(yaml_string "$limit_name")"
+      [ -n "$soft_limit" ] && printf '        soft: %s\n' "$soft_limit"
+      [ -n "$hard_limit" ] && printf '        hard: %s\n' "$hard_limit"
+    done < <(printf '%s\n' "$record" | jq -c '.ulimits[]?')
+  fi
+
+  healthcheck=$(printf '%s\n' "$record" | jq -c '.healthcheck // null')
+  if [ "$healthcheck" != 'null' ] && [ "$(printf '%s\n' "$healthcheck" | jq -r 'length')" -gt 0 ]; then
+    printf '    healthcheck:\n'
+    test_type=$(printf '%s\n' "$healthcheck" | jq -r '.Test[0] // empty')
+    case "$test_type" in
+      CMD-SHELL)
+        health_test=$(printf '%s\n' "$healthcheck" | jq -r '.Test[1] // empty')
+        printf '      test: %s\n' "$(yaml_string "$health_test")"
+        ;;
+      CMD)
+        printf '      test:\n'
+        while IFS= read -r test_arg; do
+          printf '        - %s\n' "$(yaml_string "$test_arg")"
+        done < <(printf '%s\n' "$healthcheck" | jq -r '.Test[1:][]? | tostring')
+        ;;
+      NONE)
+        printf '      test: ["NONE"]\n'
+        ;;
+    esac
+    for health_field in Interval Timeout StartPeriod StartInterval; do
+      compose_health_field=$(printf '%s' "$health_field" | tr '[:upper:]' '[:lower:]')
+      case "$compose_health_field" in
+        startperiod) compose_health_field='start_period' ;;
+        startinterval) compose_health_field='start_interval' ;;
+      esac
+      health_value=$(printf '%s\n' "$healthcheck" | jq -r --arg field "$health_field" '.[$field] // 0')
+      if [ "$health_value" != '0' ]; then
+        printf '      %s: %s\n' "$compose_health_field" "$(yaml_string "${health_value}ns")"
+      fi
+    done
+    retries=$(printf '%s\n' "$healthcheck" | jq -r '.Retries // 0')
+    [ "$retries" != '0' ] && printf '      retries: %s\n' "$retries"
+  fi
+
   command_json=$(printf '%s\n' "$record" | jq -c '.cmd_v2 // .cmd // null')
   command_type=$(printf '%s\n' "$command_json" | jq -r 'type')
   if [ "$command_type" = 'array' ]; then
@@ -217,7 +388,9 @@ fi
 
   cpu_priority=$(printf '%s\n' "$record" | jq -r '.cpu_priority // empty')
   memory_limit=$(printf '%s\n' "$record" | jq -r '.memory_limit // 0')
-  if [ -n "$cpu_priority" ] || { [ -n "$memory_limit" ] && [ "$memory_limit" != '0' ]; }; then
+  if [ "$(printf '%s\n' "$record" | jq -r '.inspect_source // false')" = 'true' ] && [ -n "$memory_limit" ] && [ "$memory_limit" != '0' ]; then
+    printf '    mem_limit: %s\n' "$memory_limit"
+  elif [ -n "$cpu_priority" ] || { [ -n "$memory_limit" ] && [ "$memory_limit" != '0' ]; }; then
     printf '    # Review Synology-only resource settings manually:'
     [ -n "$cpu_priority" ] && printf ' cpu_priority=%s' "$cpu_priority"
     [ -n "$memory_limit" ] && [ "$memory_limit" != '0' ] && printf ' memory_limit=%s' "$memory_limit"
@@ -232,6 +405,14 @@ fi
       [ -n "$network_name" ] || continue
       printf '  %s:\n    external: true\n' "$(yaml_string "$network_name")"
     done <<< "$network_names"
+  fi
+
+  if [ -n "$volume_names" ]; then
+    printf 'volumes:\n'
+    while IFS= read -r volume_name; do
+      [ -n "$volume_name" ] || continue
+      printf '  %s:\n    external: true\n' "$(yaml_string "$volume_name")"
+    done <<< "$volume_names"
   fi
 } > "$compose_temp"
 

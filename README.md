@@ -111,16 +111,22 @@ cd /volume1/docker/jellyfin
 docker-compose up -d --force-recreate
 ```
 
-For a non‑Compose container, export its settings from Synology Container Manager and convert that JSON to a reviewed Compose file:
+For a non‑Compose container, generate a reviewed Compose file directly from `docker inspect`:
 
 ```bash
-./syno_container_export_to_compose.sh /path/to/container-export.json /volume1/docker/container-name
-sudo docker rm container-name
+./syno_docker_list_containers.sh --compose-dir /volume1/docker/container-name container-name
 cd /volume1/docker/container-name
-sudo docker-compose -f container-name.docker-compose.yml up -d --force-recreate
+sudo docker rm container-name
+sudo docker compose -f container-name.docker-compose.yml up -d --force-recreate
 ```
 
-The converter writes a private `<name>.env` file containing environment values and a `<name>.docker-compose.yml` file that forces the `local` logger. If the NAS data is not under `/volume1`, pass `--volume-root /volumeN`. Review mounts and ports before running. Removing the old stopped container does not remove its bind-mounted folders or named volumes.
+To convert every non‑Compose container, omit the container name:
+
+```bash
+./syno_docker_list_containers.sh --compose-dir /volume1/docker/recreated-containers
+```
+
+The converter writes a private `<name>.env` file containing environment values and a `<name>.docker-compose.yml` file that forces the `local` logger. It also accepts a Synology Container Manager JSON export through `syno_container_export_to_compose.sh`; when using that format, pass `--volume-root /volumeN` if the NAS data is not under `/volume1`. Review mounts and ports before running. Removing the old stopped container does not remove its bind-mounted folders or named volumes.
 
 Re‑run `syno_docker_list_containers.sh` until **everything** says `local`. The listing includes stopped containers so `db`-logger failures remain visible.
 

@@ -100,6 +100,34 @@ if ("$repo_dir/syno_container_export_to_compose.sh" "$export_dir/exported.json" 
 fi
 printf 'Synology export conversion tests passed\n'
 
+inspect_dir=$(mktemp -d)
+printf '%s\n' "$DOCKER_FIXTURE" > "$inspect_dir/inspect.json"
+converter_output=$("$repo_dir/syno_container_export_to_compose.sh" "$inspect_dir/inspect.json" "$inspect_dir")
+[[ "$converter_output" != *"$marker"* ]]
+[[ -f "$inspect_dir/review-test.docker-compose.yml" ]]
+grep -Fq 'restart: unless-stopped' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq 'driver: local' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq '"127.0.0.1:8080:80/tcp"' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq '"/tmp/source path:/data path:ro"' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq 'config_volume:/config:rw' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq 'external: true' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq '/entry' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq '/cache' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fxq 'RECREATE_TEST_APP=one' "$inspect_dir/review-test.env"
+grep -Fxq 'RECREATE_TEST_APP_EXTRA=two' "$inspect_dir/review-test.env"
+printf 'Docker inspect conversion tests passed\n'
+
+selected_dir=$(mktemp -d)
+MOCK_LIST_MODE=unmanaged
+export MOCK_LIST_MODE
+selected_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$selected_dir" review-test)
+[[ "$selected_output" != *"$marker"* ]]
+[[ "$selected_output" != *'RECREATE_TEST_APP=one'* ]]
+[[ -f "$selected_dir/review-test.docker-compose.yml" ]]
+[[ -f "$selected_dir/review-test.env" ]]
+grep -Fq 'restart: unless-stopped' "$selected_dir/review-test.docker-compose.yml"
+printf 'Single-container Compose export tests passed\n'
+
 for script in "$repo_dir"/*.sh; do
   bash -n "$script"
 done

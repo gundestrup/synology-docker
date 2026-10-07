@@ -1,15 +1,59 @@
 #!/bin/bash
+set -euo pipefail
 
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 readonly SCRIPT_DIR
-
-# Store container information in an array
-containers_info=()
 readonly NOT_COMPOSE="!---not_managed_by_compose---!"
 readonly MAYBE_PORTAINER="!---maybe_managed_by_portainer---!"
 
+usage() {
+  echo "Usage: $0 [--compose-dir DIR] [--force] [CONTAINER]" >&2
+  exit 1
+}
+
+compose_dir=''
+force='false'
+target_container=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --compose-dir)
+      shift
+      [ "${1:-}" != '' ] || usage
+      compose_dir=$1
+      shift
+      ;;
+    -f|--force)
+      force='true'
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    -*)
+      usage
+      ;;
+    *)
+      [ -z "$target_container" ] || usage
+      target_container=$1
+      shift
+      ;;
+  esac
+done
+
+containers=()
+if [ -n "$target_container" ]; then
+  docker inspect "$target_container" >/dev/null
+  containers+=("$target_container")
+else
+  while IFS= read -r container_id; do
+    [ -n "$container_id" ] && containers+=("$container_id")
+  done < <(docker ps -aq)
+fi
+
+# Store container information in an array
+containers_info=()
 # Get the list of containers and their compose locations
-for c in $(docker ps -aq); do
+for c in "${containers[@]}"; do
   container_info=$(docker inspect "$c" --format "{{.Name}} {{if index .Config.Labels \"com.docker.compose.project.config_files\"}}{{index .Config.Labels \"com.docker.compose.project.config_files\"}}{{else}}${NOT_COMPOSE}{{end}} {{.HostConfig.LogConfig.Type}}")
   containers_info+=("$container_info")
 done
@@ -72,11 +116,29 @@ if [ ${#docker_managed[@]} -gt 0 ]; then
   echo "If these containers already show as 'local' logger, there is no need to recreate them manually"
   echo
   for container in "${docker_managed[@]}"; do
-  docker_command=$("${SCRIPT_DIR}/container_recreate.sh" "$container")
-  echo "----------------------------------------------------"
-  echo "Container: ${container}"
-  echo "----------------------------------------------------"
-  printf '%s\n' "$docker_command"
-  echo
+    docker_command=$("${SCRIPT_DIR}/container_recreate.sh" "$container")
+    echo "----------------------------------------------------"
+    echo "Container: ${container}"
+    echo "----------------------------------------------------"
+    printf '%s\n' "$docker_command"
+    echo
   done
+fi
+
+if [ -n "$compose_dir" ]; then
+  if [ ${#docker_managed[@]} -eq 0 ]; then
+    echo "No non-Compose containers to convert."
+    exit 0
+  fi
+  mkdir -p "$compose_dir"
+  converter_args=()
+  [ "$force" = 'true' ] && converter_args+=(--force)
+  for container in "${docker_managed[@]}"; do
+    inspect_temp=$(mktemp "${compose_dir}/.docker-inspect.XXXXXX")
+    docker inspect "$container" > "$inspect_temp"
+    "${SCRIPT_DIR}/syno_container_export_to_compose.sh" "${converter_args[@]}" "$inspect_temp" "$compose_dir"
+    rm -f "$inspect_temp"
+  done
+elif [ -n "$target_container" ] && [ ${#docker_managed[@]} -eq 0 ]; then
+  echo "Container is already Compose-managed or was not found."
 fi
