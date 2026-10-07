@@ -233,6 +233,11 @@ docker run --rm -v "$PWD:/workspace:ro" synology-docker-tests
 
 The supported test scope is DSM major versions 6 and 7 only. These disposable tests cover version selection, stage/backup/restore failure paths, DSM 6/7 service failures, forwarding edits, verified module downloads, AppArmor rollback, and safe container-command rendering. They mock DSM; they do not modify a live Docker service or substitute for kernel and package tests on a NAS.
 
+### Validation status
+
+- **DSM 7:** live-tested on DSM 7.4.1 with Docker Engine 29.8.2 and Docker Compose 5.6.0, including kernel-module/AppArmor preparation and `db`-logger recovery workflows.
+- **DSM 6:** implemented and covered by mocked service-control tests, but **not yet validated on physical hardware**. Treat DSM 6 support as best-effort until a real DSM 6 NAS passes the runtime probe, update, workload, and rollback checks.
+
 Before running the updater on a NAS, check its runtime prerequisites with:
 
 ```bash
