@@ -78,7 +78,13 @@ The easiest entry point is:
 ./syno_docker_recovery.sh
 ```
 
-The menu provides the recommended order: runtime preflight, container inventory, guided `db`-logger export, Compose validation, explicitly confirmed recreation, manifest review, backup, update, and restore. It does not delete a container, run an update, or restore a backup without typed confirmation. Environment values remain in private `.env` files and are not shown.
+The menu starts with three workflows and shows the recommended order under each:
+
+1. **Upgrade Docker/Compose** — runtime check, inventory, backup, update, verification.
+2. **Downgrade or restore Docker/Compose** — runtime check, backup, restore/downgrade, verification.
+3. **Convert containers** — inventory, export, validation, recreation, manifest/status verification.
+
+Each workflow opens a submenu with only its relevant checks and actions. The menu does not delete a container, run an update, downgrade, or restore a backup without typed confirmation. Environment values remain in private `.env` files and are not shown.
 
 The same actions can be run non-interactively, for example:
 

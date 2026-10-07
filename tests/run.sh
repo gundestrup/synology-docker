@@ -177,6 +177,10 @@ recovery_output=$("$repo_dir/syno_docker_recovery.sh" next "$recovery_dir" --fre
 grep -Fq '"/storage:rw"' "$recovery_dir/review-test/review-test.docker-compose.yml"
 manifest_output=$("$repo_dir/syno_docker_recovery.sh" manifest "$recovery_dir")
 [[ "$manifest_output" == *'review-test'* && "$manifest_output" == *'logger=db'* && "$manifest_output" == *'written'* ]]
+menu_output=$(printf '3\n0\n0\n' | "$repo_dir/syno_docker_recovery.sh")
+[[ "$menu_output" == *'What do you want to do?'* ]]
+[[ "$menu_output" == *'Convert containers away from the removed db logger'* ]]
+[[ "$menu_output" == *'inventory -> export -> validate -> recreate'* ]]
 printf 'Single-container, manifest, recovery-menu, and next-container Compose export tests passed\n'
 
 for script in "$repo_dir"/*.sh; do

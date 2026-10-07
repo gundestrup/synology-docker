@@ -23,6 +23,7 @@ Actions:
   manifest [ROOT]                Show recovery manifest status
   backup                         Create an updater backup
   update                         Run the Docker updater after typed confirmation
+  downgrade DOCKER COMPOSE       Force a specified downgrade after typed confirmation
   restore BACKUP.tgz             Restore an updater backup after typed confirmation
   menu                           Show the interactive menu
 
@@ -199,6 +200,19 @@ update() {
   sudo "${SCRIPT_DIR}/syno_docker_update.sh" update
 }
 
+downgrade() {
+  local docker_version=${1:-}
+  local compose_version=${2:-}
+  [ -n "$docker_version" ] || docker_version=$(prompt_required 'Target Docker Engine version')
+  [ -n "$compose_version" ] || compose_version=$(prompt_required 'Target Docker Compose version')
+  printf 'Downgrading can invalidate kernel-module and AppArmor preparation. Create a backup first.\n'
+  confirm_word 'DOWNGRADE'
+  sudo "${SCRIPT_DIR}/syno_docker_update.sh" \
+    --docker "$docker_version" \
+    --compose "$compose_version" \
+    --force update
+}
+
 restore() {
   local backup_file=${1:-}
   [ -n "$backup_file" ] || backup_file=$(prompt_required 'Backup archive path')
@@ -208,40 +222,112 @@ restore() {
   sudo "${SCRIPT_DIR}/syno_docker_update.sh" --backup "$backup_file" restore
 }
 
-menu() {
+menu_upgrade() {
   while true; do
     cat <<'MENU'
 
-Synology Docker recovery
+Upgrade Docker/Compose
+Recommended order: runtime check -> inventory -> backup -> update -> verification
  1) Check DSM runtime prerequisites
- 2) Show status and recreate hints
- 3) Export next db-logger container
- 4) Validate generated Compose output
- 5) Recreate generated container
- 6) Recreate existing Compose project
- 7) Export all non-Compose containers
- 8) Show recovery manifest
- 9) Create updater backup
-10) Update Docker/Compose
-11) Restore updater backup
- 0) Exit
+ 2) Show container inventory and status
+ 3) Create updater backup
+ 4) Update Docker/Compose
+ 5) Verify post-update status
+ 0) Back
 MENU
     printf 'Select an action: ' >&2
     read -r choice || return 0
     case "$choice" in
       1) preflight ;;
       2) status ;;
-      3) recover_next '' ;;
-      4) validate_export '' '' ;;
-      5) recreate_export '' '' ;;
-      6) compose_recreate '' ;;
-      7) export_all '' ;;
-      8) show_manifest '' ;;
-      9) backup ;;
-      10) update ;;
-      11) restore '' ;;
+      3) backup ;;
+      4) update ;;
+      5) status ;;
       0) return 0 ;;
       *) printf 'Unknown action: %s\n' "$choice" >&2 ;;
+    esac
+  done
+}
+
+menu_downgrade() {
+  while true; do
+    cat <<'MENU'
+
+Downgrade or restore Docker/Compose
+Recommended order: runtime check -> backup -> restore/downgrade -> verification
+ 1) Check DSM runtime prerequisites
+ 2) Create updater backup
+ 3) Restore updater backup
+ 4) Downgrade to specified versions
+ 5) Verify post-restore status
+ 0) Back
+MENU
+    printf 'Select an action: ' >&2
+    read -r choice || return 0
+    case "$choice" in
+      1) preflight ;;
+      2) backup ;;
+      3) restore '' ;;
+      4) downgrade '' '' ;;
+      5) status ;;
+      0) return 0 ;;
+      *) printf 'Unknown action: %s\n' "$choice" >&2 ;;
+    esac
+  done
+}
+
+menu_convert() {
+  while true; do
+    cat <<'MENU'
+
+Convert containers away from the removed db logger
+Recommended order: inventory -> export -> validate -> recreate -> manifest/status
+ 1) Show container inventory and status
+ 2) Export next db-logger container
+ 3) Validate generated Compose output
+ 4) Recreate generated container
+ 5) Recreate existing Compose project
+ 6) Export all non-Compose containers
+ 7) Show recovery manifest
+ 0) Back
+MENU
+    printf 'Select an action: ' >&2
+    read -r choice || return 0
+    case "$choice" in
+      1) status ;;
+      2) recover_next '' ;;
+      3) validate_export '' '' ;;
+      4) recreate_export '' '' ;;
+      5) compose_recreate '' ;;
+      6) export_all '' ;;
+      7) show_manifest '' ;;
+      0) return 0 ;;
+      *) printf 'Unknown action: %s\n' "$choice" >&2 ;;
+    esac
+  done
+}
+
+menu() {
+  while true; do
+    cat <<'MENU'
+
+What do you want to do?
+ 1) Upgrade Docker/Compose
+    runtime check -> inventory -> backup -> update -> verification
+ 2) Downgrade or restore Docker/Compose
+    runtime check -> backup -> restore/downgrade -> verification
+ 3) Convert containers
+    inventory -> export -> validate -> recreate -> verification
+ 0) Exit
+MENU
+    printf 'Select a workflow: ' >&2
+    read -r choice || return 0
+    case "$choice" in
+      1) menu_upgrade ;;
+      2) menu_downgrade ;;
+      3) menu_convert ;;
+      0) return 0 ;;
+      *) printf 'Unknown workflow: %s\n' "$choice" >&2 ;;
     esac
   done
 }
@@ -265,6 +351,7 @@ case "$action" in
   manifest) show_manifest "$@" ;;
   backup) [ "$#" -eq 0 ] || usage; backup ;;
   update) [ "$#" -eq 0 ] || usage; update ;;
+  downgrade) downgrade "$@" ;;
   restore) restore "$@" ;;
   menu) [ "$#" -eq 0 ] || usage; menu ;;
   -h|--help|help) usage ;;
