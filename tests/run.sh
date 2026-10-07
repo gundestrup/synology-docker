@@ -94,11 +94,18 @@ grep -Fq 'external: true' "$export_dir/exported-app.docker-compose.yml"
 grep -Fxq 'TEST_SECRET=do-not-print' "$export_dir/exported-app.env"
 grep -Fxq 'EMPTY_VALUE=' "$export_dir/exported-app.env"
 [[ "$(stat -c '%a' "$export_dir/exported-app.env")" == '600' ]]
-if ("$repo_dir/syno_container_export_to_compose.sh" "$export_dir/exported.json" "$export_dir") >/dev/null 2>&1; then
-  printf 'Synology export converter overwrote existing files\n' >&2
-  exit 1
-fi
-printf 'Synology export conversion tests passed\n'
+second_conversion=$("$repo_dir/syno_container_export_to_compose.sh" "$export_dir/exported.json" "$export_dir")
+[[ "$second_conversion" == *'Already converted'* ]]
+[[ ! -e "$export_dir/exported-app.docker-compose.yml.generated" ]]
+printf '# locally reviewed change\n' >> "$export_dir/exported-app.docker-compose.yml"
+changed_conversion=$("$repo_dir/syno_container_export_to_compose.sh" "$export_dir/exported.json" "$export_dir")
+[[ "$changed_conversion" == *'Existing Compose file differs'* ]]
+[[ "$changed_conversion" == *'Generated candidate'* ]]
+[[ "$changed_conversion" == *'locally reviewed change'* ]]
+[[ -f "$export_dir/exported-app.docker-compose.yml.generated" ]]
+"$repo_dir/syno_container_export_to_compose.sh" --force "$export_dir/exported.json" "$export_dir" >/dev/null
+[[ ! -e "$export_dir/exported-app.docker-compose.yml.generated" ]]
+printf 'Synology export conversion and reconciliation tests passed\n'
 
 inspect_dir=$(mktemp -d)
 printf '%s\n' "$DOCKER_FIXTURE" > "$inspect_dir/inspect.json"

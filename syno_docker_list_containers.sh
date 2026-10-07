@@ -8,6 +8,7 @@ readonly MAYBE_PORTAINER="!---maybe_managed_by_portainer---!"
 
 usage() {
   echo "Usage: $0 [--compose-dir DIR] [--force] [CONTAINER]" >&2
+  echo "With --compose-dir, existing Compose output is compared and differences are saved as .generated unless --force is used." >&2
   exit 1
 }
 

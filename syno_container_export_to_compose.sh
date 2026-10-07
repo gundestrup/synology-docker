@@ -3,6 +3,7 @@ set -euo pipefail
 
 usage() {
   echo "Usage: $0 [--force] [--volume-root PATH] EXPORT_OR_INSPECT.json [OUTPUT_DIR]" >&2
+  echo "Existing output is compared; differing candidates are saved as .generated unless --force is used." >&2
   exit 1
 }
 
@@ -129,9 +130,9 @@ cleanup() {
 }
 trap cleanup EXIT
 volume_names=''
-
-if [ "$force" != 'true' ] && { [ -e "$compose_file" ] || [ -e "$env_file" ]; }; then
-  fail "Output already exists; use --force: $compose_file or $env_file"
+outputs_exist='false'
+if [ -e "$compose_file" ] || [ -e "$env_file" ]; then
+  outputs_exist='true'
 fi
 
 {
@@ -428,14 +429,74 @@ if [ "$(printf '%s\n' "$record" | jq -r '.env_variables | length')" -gt 0 ]; the
   done < <(printf '%s\n' "$record" | jq -c '.env_variables[]?')
 fi
 
+if [ "$outputs_exist" = 'true' ]; then
+  command -v diff >/dev/null 2>&1 || fail "diff is required to compare existing Compose output"
+  compose_same='false'
+  env_same='false'
+  if [ -f "$compose_file" ] && diff -q "$compose_file" "$compose_temp" >/dev/null; then
+    compose_same='true'
+  fi
+  if [ -f "$env_file" ] && [ -s "$env_temp" ] && diff -q "$env_file" "$env_temp" >/dev/null; then
+    env_same='true'
+  elif [ ! -f "$env_file" ] && [ ! -s "$env_temp" ]; then
+    env_same='true'
+  fi
+
+  if [ "$compose_same" = 'true' ] && [ "$env_same" = 'true' ] && [ "$force" != 'true' ]; then
+    rm -f "$compose_temp" "$env_temp" "${compose_file}.generated" "${env_file}.generated"
+    trap - EXIT
+    printf 'Already converted: %s\n' "$compose_file"
+    exit 0
+  fi
+
+  if [ "$force" != 'true' ]; then
+    generated_compose="${compose_file}.generated"
+    generated_env="${env_file}.generated"
+    mv -f "$compose_temp" "$generated_compose"
+    if [ -s "$env_temp" ]; then
+      mv -f "$env_temp" "$generated_env"
+      chmod 600 "$generated_env"
+    else
+      rm -f "$env_temp" "$generated_env"
+    fi
+    chmod 600 "$generated_compose"
+    trap - EXIT
+
+    if [ "$compose_same" != 'true' ]; then
+      printf 'Existing Compose file differs: %s\n' "$compose_file"
+      printf 'Generated candidate: %s\n' "$generated_compose"
+      if [ -f "$compose_file" ]; then
+        diff -u "$compose_file" "$generated_compose" || true
+      fi
+    fi
+    if [ "$env_same" != 'true' ]; then
+      if [ -f "$generated_env" ]; then
+        printf 'Environment file differs; generated private candidate: %s\n' "$generated_env"
+      else
+        printf 'Environment file differs; generated candidate has no environment file\n'
+      fi
+    fi
+    exit 0
+  fi
+
+  if [ "$compose_same" != 'true' ] && [ -f "$compose_file" ]; then
+    printf 'Existing Compose file differs and will be replaced by --force:\n'
+    diff -u "$compose_file" "$compose_temp" || true
+  fi
+  if [ "$env_same" != 'true' ]; then
+    printf 'Existing environment file differs and will be replaced by --force.\n'
+  fi
+fi
+
 mv "$compose_temp" "$compose_file"
 if [ -s "$env_temp" ]; then
   mv "$env_temp" "$env_file"
   chmod 600 "$env_file"
 else
-  rm -f "$env_temp"
+  rm -f "$env_temp" "$env_file"
 fi
 chmod 600 "$compose_file"
+rm -f "${compose_file}.generated" "${env_file}.generated"
 trap - EXIT
 
 printf 'Wrote %s\n' "$compose_file"
