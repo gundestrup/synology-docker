@@ -19,7 +19,7 @@ check_command() {
   fi
 }
 
-for tool in bash jq curl docker realpath readlink timeout mktemp comm sort awk sed tar find; do
+for tool in bash jq curl docker realpath readlink timeout mktemp comm sort awk sed tar find diff date; do
   check_command "$tool"
 done
 
