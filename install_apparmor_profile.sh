@@ -106,6 +106,7 @@ sss_temp=''
 parser_installed='false'
 profile_created='false'
 marker_created='false'
+# shellcheck disable=SC2329 # Invoked by the EXIT trap below.
 cleanup_apparmor_install() {
   local status=$?
   if [ "$status" -ne 0 ]; then
@@ -124,7 +125,7 @@ cleanup_apparmor_install() {
   [ -z "$sss_temp" ] || rm -f "$sss_temp"
   return "$status"
 }
-trap 'cleanup_apparmor_install' EXIT
+trap cleanup_apparmor_install EXIT
 
 # 1. Install apparmor_parser wrapper
 if is_our_wrapper; then

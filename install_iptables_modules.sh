@@ -20,6 +20,7 @@ else
     echo "Could not locate Container Manager or Docker start-stop-status script."
     exit 1
 fi
+# shellcheck disable=SC2016 # This is a literal startup-script anchor, not an expansion.
 INSERTAFTER='iptablestool --insmod "${DockerServName}" ${InsertModules}'
 INSERT="    # Added by docker update\n"
 INSERT="${INSERT}   # Load raw modules\n"
@@ -156,12 +157,12 @@ check_all() {
   echo
   echo -n " - .ko files in place      ?"
   KOS_PLACED=$(module_files_present)
-  output_result $KOS_PLACED
+  output_result "$KOS_PLACED"
 
   echo
   echo -n " - kernel modules loaded   ?"
   MODS_LOADED=$(modules_loaded)
-  output_result $MODS_LOADED
+  output_result "$MODS_LOADED"
 
   echo
   echo -n " - available for download  ?"
@@ -176,7 +177,7 @@ check_all() {
   echo
   echo -n " - CM script loads modules ?"
   SCRIPT_ADDED=$(start_script_loads_modules)
-  output_result $SCRIPT_ADDED
+  output_result "$SCRIPT_ADDED"
   echo
   echo
 }
