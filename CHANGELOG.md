@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added GitHub Actions CI for the Docker regression suite, Bash syntax checks, ShellCheck, and Semgrep without requiring SonarCloud or Semgrep account tokens.
 - Made `--stage` skip iptables kernel-module and AppArmor installation. Staging should prepare and inspect an update without mutating host configuration.
 - Shell-escaped every argument in generated container recreation commands and preserved command arguments individually. Container metadata must not become executable shell syntax when a suggested command is copied.
 - Stopped update and restore workflows when binary, ownership, permissions, log-driver, or restore-file operations fail; logger configuration now uses a temporary file and reports invalid JSON or replacement failures. Continuing after a partial install could leave Docker in a mixed or unusable state while reporting success.
