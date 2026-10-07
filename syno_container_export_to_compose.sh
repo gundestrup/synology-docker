@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--force] [--status-file PATH] [--volume-root PATH] EXPORT_OR_INSPECT.json [OUTPUT_DIR]" >&2
+  echo "Usage: $0 [--force] [--fresh-anonymous-volumes] [--status-file PATH] [--volume-root PATH] EXPORT_OR_INSPECT.json [OUTPUT_DIR]" >&2
   echo "Existing output is compared; differing candidates are saved as .generated unless --force is used." >&2
   exit 1
 }
@@ -17,6 +17,7 @@ yaml_string() {
 }
 
 force='false'
+fresh_anonymous_volumes='false'
 status_file=''
 volume_root='/volume1'
 positional=()
@@ -24,6 +25,10 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     -f|--force)
       force='true'
+      shift
+      ;;
+    --fresh-anonymous-volumes)
+      fresh_anonymous_volumes='true'
       shift
       ;;
     --status-file)
@@ -79,6 +84,7 @@ record=$(jq '
       volume_bindings: ((.Mounts // []) | map(select(.Type != "tmpfs") | {
           host_volume_file: (if .Type == "volume" then .Name else .Source end),
           named_volume: (.Type == "volume"),
+          anonymous_volume: (.Type == "volume" and (.Name | test("^[0-9a-f]{64}$"))),
           absolute_host_path: (.Type == "bind"),
           mount_point: .Destination,
           type: (if .RW == false then "ro" else "rw" end)
@@ -185,7 +191,12 @@ fi
   for field in hostname domainname user working_dir runtime uts ipc pid cgroupns userns stop_signal shm_size; do
     value=$(printf '%s\n' "$record" | jq -r --arg field "$field" '.[$field] // empty')
     if [ -n "$value" ]; then
-      printf '    %s: %s\n' "$field" "$(yaml_string "$value")"
+      compose_field=$field
+      case "$field" in
+        cgroupns) compose_field='cgroup' ;;
+        userns) compose_field='userns_mode' ;;
+      esac
+      printf '    %s: %s\n' "$compose_field" "$(yaml_string "$value")"
     fi
   done
   if [ "$(printf '%s\n' "$record" | jq -r '.read_only // false')" = 'true' ]; then
@@ -271,11 +282,12 @@ fi
       container_path=$(printf '%s\n' "$binding" | jq -r '.mount_point // empty')
       access=$(printf '%s\n' "$binding" | jq -r '.type // "rw"')
       named_volume=$(printf '%s\n' "$binding" | jq -r '.named_volume // false')
+      anonymous_volume=$(printf '%s\n' "$binding" | jq -r '(.anonymous_volume // (.named_volume == true and (.host_volume_file // "" | test("^[0-9a-f]{64}$"))))')
       absolute_host_path=$(printf '%s\n' "$binding" | jq -r '.absolute_host_path // false')
       [ -n "$host_path" ] && [ -n "$container_path" ] || fail "Volume binding is missing a host path or mount point"
-      if [ "$named_volume" = 'true' ]; then
+      if [ "$named_volume" = 'true' ] && { [ "$fresh_anonymous_volumes" != 'true' ] || [ "$anonymous_volume" != 'true' ]; }; then
         volume_names="${volume_names}${host_path}"$'\n'
-      elif [ "$absolute_host_path" != 'true' ]; then
+      elif [ "$named_volume" != 'true' ] && [ "$absolute_host_path" != 'true' ]; then
         case "$host_path" in
           /volume*|/dev/*|/run/*)
             ;;
@@ -287,7 +299,11 @@ fi
             ;;
         esac
       fi
-      volume_mapping="${host_path}:${container_path}:${access}"
+      if [ "$named_volume" = 'true' ] && [ "$fresh_anonymous_volumes" = 'true' ] && [ "$anonymous_volume" = 'true' ]; then
+        volume_mapping="${container_path}:${access}"
+      else
+        volume_mapping="${host_path}:${container_path}:${access}"
+      fi
       printf '      - %s\n' "$(yaml_string "$volume_mapping")"
     done < <(printf '%s\n' "$record" | jq -c '.volume_bindings[]?')
   fi

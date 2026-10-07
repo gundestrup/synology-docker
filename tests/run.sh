@@ -37,7 +37,8 @@ docker() {
 export -f docker
 
 marker="$test_tmp_dir/command-injected"
-DOCKER_FIXTURE=$(jq -cn --arg marker "$marker" '[{Name:"/review-test",Config:{Image:"example/test:1",Env:["RECREATE_TEST_APP=one","RECREATE_TEST_APP_EXTRA=two",("RECREATE_TEST_DANGEROUS=$(touch "+$marker+")")],Entrypoint:["/entry","--entry-flag"],Cmd:["argument with spaces","second-argument","line1\nline2"],Tty:true,OpenStdin:false},HostConfig:{PortBindings:{"80/tcp":[{HostIp:"127.0.0.1",HostPort:"8080"}]},RestartPolicy:{Name:"unless-stopped"},NetworkMode:"custom-net",LogConfig:{Type:"db"}},Mounts:[{Type:"bind",Source:"/tmp/source path",Destination:"/data path",RW:false,Mode:""},{Type:"volume",Name:"config_volume",Source:"/var/lib/docker/volumes/config_volume/_data",Destination:"/config",RW:true,Mode:""},{Type:"tmpfs",Destination:"/cache",RW:true}]}]')
+anon_volume='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+DOCKER_FIXTURE=$(jq -cn --arg marker "$marker" --arg anon_volume "$anon_volume" '[{Name:"/review-test",Config:{Image:"example/test:1",Env:["RECREATE_TEST_APP=one","RECREATE_TEST_APP_EXTRA=two",("RECREATE_TEST_DANGEROUS=$(touch "+$marker+")")],Entrypoint:["/entry","--entry-flag"],Cmd:["argument with spaces","second-argument","line1\nline2"],Tty:true,OpenStdin:false},HostConfig:{PortBindings:{"80/tcp":[{HostIp:"127.0.0.1",HostPort:"8080"}]},RestartPolicy:{Name:"unless-stopped"},NetworkMode:"custom-net",LogConfig:{Type:"db"},CgroupnsMode:"host",UsernsMode:"host",UtsMode:"host"},Mounts:[{Type:"bind",Source:"/tmp/source path",Destination:"/data path",RW:false,Mode:""},{Type:"volume",Name:"config_volume",Source:"/var/lib/docker/volumes/config_volume/_data",Destination:"/config",RW:true,Mode:""},{Type:"volume",Name:$anon_volume,Source:"/var/lib/docker/volumes/anonymous/_data",Destination:"/storage",RW:true,Mode:""},{Type:"tmpfs",Destination:"/cache",RW:true}]}]')
 export DOCKER_FIXTURE
 unset RECREATE_TEST_APP RECREATE_TEST_APP_EXTRA RECREATE_TEST_DANGEROUS
 suggestion=$("$repo_dir/container_recreate.sh" review-test)
@@ -122,10 +123,22 @@ grep -Fq '"127.0.0.1:8080:80/tcp"' "$inspect_dir/review-test.docker-compose.yml"
 grep -Fq '"/tmp/source path:/data path:ro"' "$inspect_dir/review-test.docker-compose.yml"
 grep -Fq 'config_volume:/config:rw' "$inspect_dir/review-test.docker-compose.yml"
 grep -Fq 'external: true' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq 'cgroup: "host"' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq 'userns_mode: "host"' "$inspect_dir/review-test.docker-compose.yml"
+grep -Fq 'uts: "host"' "$inspect_dir/review-test.docker-compose.yml"
 grep -Fq '/entry' "$inspect_dir/review-test.docker-compose.yml"
 grep -Fq '/cache' "$inspect_dir/review-test.docker-compose.yml"
 grep -Fxq 'RECREATE_TEST_APP=one' "$inspect_dir/review-test.env"
 grep -Fxq 'RECREATE_TEST_APP_EXTRA=two' "$inspect_dir/review-test.env"
+grep -Fq "$anon_volume:/storage:rw" "$inspect_dir/review-test.docker-compose.yml"
+
+fresh_dir=$(mktemp -d)
+"$repo_dir/syno_container_export_to_compose.sh" --fresh-anonymous-volumes "$inspect_dir/inspect.json" "$fresh_dir" >/dev/null
+grep -Fq '"/storage:rw"' "$fresh_dir/review-test.docker-compose.yml"
+if grep -Fq "$anon_volume" "$fresh_dir/review-test.docker-compose.yml"; then
+  printf 'Fresh anonymous volume conversion retained the old volume name\n' >&2
+  exit 1
+fi
 printf 'Docker inspect conversion tests passed\n'
 
 selected_dir=$(mktemp -d)

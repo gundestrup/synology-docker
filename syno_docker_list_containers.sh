@@ -7,7 +7,7 @@ readonly NOT_COMPOSE="!---not_managed_by_compose---!"
 readonly MAYBE_PORTAINER="!---maybe_managed_by_portainer---!"
 
 usage() {
-  echo "Usage: $0 [--compose-dir DIR] [--container-dirs] [--manifest FILE] [--next] [--force] [CONTAINER]" >&2
+  echo "Usage: $0 [--compose-dir DIR] [--container-dirs] [--manifest FILE] [--next] [--fresh-anonymous-volumes] [--force] [CONTAINER]" >&2
   echo "With --compose-dir, existing Compose output is compared and differences are saved as .generated unless --force is used." >&2
   echo "With --next, one container still using the removed db logger is processed per run." >&2
   exit 1
@@ -22,6 +22,7 @@ compose_dir=''
 container_dirs='false'
 manifest_file=''
 next_container='false'
+fresh_anonymous_volumes='false'
 force='false'
 target_container=''
 while [ "$#" -gt 0 ]; do
@@ -44,6 +45,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --next)
       next_container='true'
+      shift
+      ;;
+    --fresh-anonymous-volumes)
+      fresh_anonymous_volumes='true'
       shift
       ;;
     -f|--force)
@@ -260,6 +265,7 @@ fi
 if [ -n "$compose_dir" ]; then
   converter_args=()
   [ "$force" = 'true' ] && converter_args+=(--force)
+  [ "$fresh_anonymous_volumes" = 'true' ] && converter_args+=(--fresh-anonymous-volumes)
 
   if [ "$next_container" = 'true' ]; then
     next_index=''
