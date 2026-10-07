@@ -60,6 +60,32 @@ debug "environment variables (filtered)..."
 if [ "$has_env" = 'true' ]; then
   docker_command+=(--env-file /REVIEW_AND_CREATE_ENV_FILE_BEFORE_RUNNING)
 fi
+docker_command+=(--log-driver local)
+
+restart_policy=$(printf '%s\n' "$container_info" | jq -r '.[0].HostConfig.RestartPolicy.Name // empty')
+restart_count=$(printf '%s\n' "$container_info" | jq -r '.[0].HostConfig.RestartPolicy.MaximumRetryCount // 0')
+case "$restart_policy" in
+  always|unless-stopped)
+    docker_command+=(--restart "$restart_policy")
+    ;;
+  on-failure)
+    if [ "$restart_count" -gt 0 ]; then
+      docker_command+=(--restart "on-failure:$restart_count")
+    else
+      docker_command+=(--restart on-failure)
+    fi
+    ;;
+esac
+
+network_mode=$(printf '%s\n' "$container_info" | jq -r '.[0].HostConfig.NetworkMode // empty')
+if [ -n "$network_mode" ] && [ "$network_mode" != 'default' ]; then
+  docker_command+=(--network "$network_mode")
+fi
+
+entrypoint=$(printf '%s\n' "$container_info" | jq -r '.[0].Config.Entrypoint[0]? // empty')
+if [ -n "$entrypoint" ]; then
+  docker_command+=(--entrypoint "$entrypoint")
+fi
 
 debug "port mappings..."
 # Extract port mappings and add each port to the array individually
@@ -98,6 +124,11 @@ if [ "$(printf '%s\n' "$container_info" | jq -r '.[0].Config.Tty // false')" = '
   docker_command+=(-t)
 fi
 docker_command+=("$image")
+if [ -n "$entrypoint" ]; then
+  while IFS= read -r -d '' entrypoint_arg; do
+    docker_command+=("$entrypoint_arg")
+  done < <(printf '%s\n' "$container_info" | jq -j '.[0].Config.Entrypoint[1:][]? | . + "\u0000"')
+fi
 while IFS= read -r -d '' command_arg; do
   docker_command+=("$command_arg")
 done < <(printf '%s\n' "$container_info" | jq -j '.[0].Config.Cmd[]? | . + "\u0000"')
@@ -106,7 +137,7 @@ done < <(printf '%s\n' "$container_info" | jq -j '.[0].Config.Cmd[]? | . + "\u00
 if [ "$has_env" = 'true' ]; then
   printf '%s\n' '# Create a reviewed env file with these variables before running; values are intentionally hidden:'
   while IFS= read -r var; do
-    printf '#   %s\n' "$var"
+    printf '#   %q\n' "$var"
   done <<< "$env_vars"
 fi
 for ((i = 0; i < ${#docker_command[@]}; i++)); do

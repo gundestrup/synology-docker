@@ -17,6 +17,7 @@ docker() {
       fi
       ;;
     ps)
+      [ "${2:-}" = '-aq' ] || return 2
       printf '%s\n' "${MOCK_DOCKER_IDS:-}"
       ;;
     run)
@@ -32,7 +33,7 @@ docker() {
 export -f docker
 
 marker="$test_tmp_dir/command-injected"
-DOCKER_FIXTURE=$(jq -cn --arg marker "$marker" '[{Name:"/review-test",Config:{Image:"example/test:1",Env:["RECREATE_TEST_APP=one","RECREATE_TEST_APP_EXTRA=two",("RECREATE_TEST_DANGEROUS=$(touch "+$marker+")")],Cmd:["argument with spaces","second-argument","line1\nline2"],Tty:true,OpenStdin:false},HostConfig:{PortBindings:{"80/tcp":[{HostIp:"127.0.0.1",HostPort:"8080"}]}},Mounts:[{Type:"bind",Source:"/tmp/source path",Destination:"/data path",RW:false,Mode:""},{Type:"volume",Name:"config_volume",Source:"/var/lib/docker/volumes/config_volume/_data",Destination:"/config",RW:true,Mode:""},{Type:"tmpfs",Destination:"/cache",RW:true}]}]')
+DOCKER_FIXTURE=$(jq -cn --arg marker "$marker" '[{Name:"/review-test",Config:{Image:"example/test:1",Env:["RECREATE_TEST_APP=one","RECREATE_TEST_APP_EXTRA=two",("RECREATE_TEST_DANGEROUS=$(touch "+$marker+")")],Entrypoint:["/entry","--entry-flag"],Cmd:["argument with spaces","second-argument","line1\nline2"],Tty:true,OpenStdin:false},HostConfig:{PortBindings:{"80/tcp":[{HostIp:"127.0.0.1",HostPort:"8080"}]},RestartPolicy:{Name:"unless-stopped"},NetworkMode:"custom-net",LogConfig:{Type:"db"}},Mounts:[{Type:"bind",Source:"/tmp/source path",Destination:"/data path",RW:false,Mode:""},{Type:"volume",Name:"config_volume",Source:"/var/lib/docker/volumes/config_volume/_data",Destination:"/config",RW:true,Mode:""},{Type:"tmpfs",Destination:"/cache",RW:true}]}]')
 export DOCKER_FIXTURE
 unset RECREATE_TEST_APP RECREATE_TEST_APP_EXTRA RECREATE_TEST_DANGEROUS
 suggestion=$("$repo_dir/container_recreate.sh" review-test)
@@ -49,6 +50,10 @@ run_result=$(eval "$suggestion")
 [[ "$run_result" == *'<config_volume:/config>'* ]]
 [[ "$run_result" == *'</cache>'* ]]
 [[ "$run_result" == *'<-t>'* && "$run_result" != *'<-i>'* ]]
+[[ "$run_result" == *'<--log-driver>'*'<local>'* ]]
+[[ "$run_result" == *'<--restart>'*'<unless-stopped>'* ]]
+[[ "$run_result" == *'<--network>'*'<custom-net>'* ]]
+[[ "$run_result" == *'<--entrypoint>'*'</entry>'*'--entry-flag'* ]]
 printf 'Container recreation rendering tests passed\n'
 
 compose_path="$test_tmp_dir/compose  file.yml"

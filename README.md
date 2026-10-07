@@ -111,7 +111,7 @@ cd /volume1/docker/jellyfin
 docker-compose up -d --force-recreate
 ```
 
-Re‑run `syno_docker_list_containers.sh` until **everything** says `local`.
+Re‑run `syno_docker_list_containers.sh` until **everything** says `local`. The listing includes stopped containers so `db`-logger failures remain visible.
 
 > Containers created via `docker run` will show a _best‑guess_ recreate command. Its environment values are deliberately hidden; replace the required `--env-file /REVIEW_AND_CREATE_ENV_FILE_BEFORE_RUNNING` with a reviewed, private environment file before use. Verify all remaining settings before running it.
 

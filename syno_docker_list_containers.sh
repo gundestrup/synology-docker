@@ -9,7 +9,7 @@ readonly NOT_COMPOSE="!---not_managed_by_compose---!"
 readonly MAYBE_PORTAINER="!---maybe_managed_by_portainer---!"
 
 # Get the list of containers and their compose locations
-for c in $(docker ps -q); do
+for c in $(docker ps -aq); do
   container_info=$(docker inspect "$c" --format "{{.Name}} {{if index .Config.Labels \"com.docker.compose.project.config_files\"}}{{index .Config.Labels \"com.docker.compose.project.config_files\"}}{{else}}${NOT_COMPOSE}{{end}} {{.HostConfig.LogConfig.Type}}")
   containers_info+=("$container_info")
 done
