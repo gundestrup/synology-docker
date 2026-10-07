@@ -55,4 +55,4 @@ jobs:
         run: pip3 install --only-binary ":all:" semgrep==1.176.0
 
       - name: Run Semgrep security scan
-        run: semgrep scan --config auto --error --metrics=off .
+        run: semgrep scan --config p/default --error --metrics=off .

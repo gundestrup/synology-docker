@@ -106,7 +106,7 @@ sss_temp=''
 parser_installed='false'
 profile_created='false'
 marker_created='false'
-# shellcheck disable=SC2329 # Invoked by the EXIT trap below.
+# shellcheck disable=SC2329,SC2317 # Invoked by the EXIT trap below.
 cleanup_apparmor_install() {
   local status=$?
   if [ "$status" -ne 0 ]; then

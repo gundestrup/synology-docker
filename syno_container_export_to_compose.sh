@@ -53,7 +53,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ "${#positional[@]}" -ge 1 ] && [ "${#positional[@]}" -le 2 ] || usage
+if [ "${#positional[@]}" -lt 1 ] || [ "${#positional[@]}" -gt 2 ]; then
+  usage
+fi
 input=${positional[0]}
 output_dir=${positional[1]:-$(dirname "$input")}
 
@@ -284,7 +286,9 @@ fi
       named_volume=$(printf '%s\n' "$binding" | jq -r '.named_volume // false')
       anonymous_volume=$(printf '%s\n' "$binding" | jq -r '(.anonymous_volume // (.named_volume == true and (.host_volume_file // "" | test("^[0-9a-f]{64}$"))))')
       absolute_host_path=$(printf '%s\n' "$binding" | jq -r '.absolute_host_path // false')
-      [ -n "$host_path" ] && [ -n "$container_path" ] || fail "Volume binding is missing a host path or mount point"
+      if [ -z "$host_path" ] || [ -z "$container_path" ]; then
+        fail "Volume binding is missing a host path or mount point"
+      fi
       if [ "$named_volume" = 'true' ] && { [ "$fresh_anonymous_volumes" != 'true' ] || [ "$anonymous_volume" != 'true' ]; }; then
         volume_names="${volume_names}${host_path}"$'\n'
       elif [ "$named_volume" != 'true' ] && [ "$absolute_host_path" != 'true' ]; then
