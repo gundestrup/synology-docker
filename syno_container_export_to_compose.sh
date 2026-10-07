@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--force] [--volume-root PATH] EXPORT_OR_INSPECT.json [OUTPUT_DIR]" >&2
+  echo "Usage: $0 [--force] [--status-file PATH] [--volume-root PATH] EXPORT_OR_INSPECT.json [OUTPUT_DIR]" >&2
   echo "Existing output is compared; differing candidates are saved as .generated unless --force is used." >&2
   exit 1
 }
@@ -17,12 +17,19 @@ yaml_string() {
 }
 
 force='false'
+status_file=''
 volume_root='/volume1'
 positional=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -f|--force)
       force='true'
+      shift
+      ;;
+    --status-file)
+      shift
+      [ "${1:-}" != '' ] || fail "--status-file requires a path"
+      status_file=$1
       shift
       ;;
     --volume-root)
@@ -445,6 +452,7 @@ if [ "$outputs_exist" = 'true' ]; then
   if [ "$compose_same" = 'true' ] && [ "$env_same" = 'true' ] && [ "$force" != 'true' ]; then
     rm -f "$compose_temp" "$env_temp" "${compose_file}.generated" "${env_file}.generated"
     trap - EXIT
+    [ -z "$status_file" ] || printf 'already-converted\n' > "$status_file"
     printf 'Already converted: %s\n' "$compose_file"
     exit 0
   fi
@@ -461,6 +469,7 @@ if [ "$outputs_exist" = 'true' ]; then
     fi
     chmod 600 "$generated_compose"
     trap - EXIT
+    [ -z "$status_file" ] || printf 'candidate-generated\n' > "$status_file"
 
     if [ "$compose_same" != 'true' ]; then
       printf 'Existing Compose file differs: %s\n' "$compose_file"
@@ -498,6 +507,7 @@ fi
 chmod 600 "$compose_file"
 rm -f "${compose_file}.generated" "${env_file}.generated"
 trap - EXIT
+[ -z "$status_file" ] || printf 'written\n' > "$status_file"
 
 printf 'Wrote %s\n' "$compose_file"
 if [ -f "$env_file" ]; then

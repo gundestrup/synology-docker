@@ -120,11 +120,26 @@ sudo docker rm container-name
 sudo docker compose -f container-name.docker-compose.yml up -d --force-recreate
 ```
 
-To convert every non‑Compose container, omit the container name:
+For a guided one-container-at-a-time recovery, use the container-data root and `--container-dirs --next`:
 
 ```bash
-./syno_docker_list_containers.sh --compose-dir /volume1/docker/recreated-containers
+./syno_docker_list_containers.sh \
+  --compose-dir /volume1/docker \
+  --container-dirs \
+  --next
 ```
+
+This selects the first container still using `db` and writes its files under `/volume1/docker/<name>/`. After reviewing the files, removing the old stopped container, and successfully recreating it, run the same command again to process the next `db` container. If the next pending container is already Compose-managed, the script prints its `docker compose up -d --force-recreate` command instead of generating another file.
+
+To convert every non‑Compose container into separate directories, omit `--next`:
+
+```bash
+./syno_docker_list_containers.sh \
+  --compose-dir /volume1/docker/recreated-containers \
+  --container-dirs
+```
+
+The script maintains a private JSON state file at `<compose-dir>/compose-export-manifest.json` (or the path supplied with `--manifest`). It records image names, logger values, output paths, and statuses such as `written`, `already-converted`, `candidate-generated`, `compose-managed`, and `updated`; it does not record environment values.
 
 The converter writes a private `<name>.env` file containing environment values and a `<name>.docker-compose.yml` file that forces the `local` logger. On a repeat run, identical output is reported as `Already converted`. If an existing Compose file differs, it is not overwritten: the YAML diff is shown and the new candidate is saved as `<name>.docker-compose.yml.generated`; differing environment data is reported without printing values and saved as `<name>.env.generated`. Use `--force` only after reviewing those differences to replace the existing files. It also accepts a Synology Container Manager JSON export through `syno_container_export_to_compose.sh`; when using that format, pass `--volume-root /volumeN` if the NAS data is not under `/volume1`. Review mounts and ports before running. Removing the old stopped container does not remove its bind-mounted folders or named volumes.
 
@@ -194,7 +209,7 @@ Before running the updater on a NAS, check its runtime prerequisites with:
 sh tests/check-dsm-runtime.sh 29
 ```
 
-Replace `29` with the planned Docker Engine major version. The updater requires `/bin/bash`, `jq`, `curl`, `docker`, `realpath`, `readlink -f`, `mktemp -d`, `diff`, and GNU-compatible `timeout --foreground`, in addition to standard shell utilities. It also needs DSM's `synopkg` (DSM 7) or `synoservicectl` (DSM 6). For a Docker Engine 28+ target, the probe additionally checks `sha256sum`, `insmod`, `lsmod`, `iptables`, and `/bin/get_key_value`. Automatic module downloads are pinned to an upstream commit and checked against platform-specific SHA-256 hashes; new kernel/platform combinations need reviewed hashes or manually installed modules. `/bin/sh` may be a different shell; run scripts through their shebangs rather than invoking Bash scripts with `sh`. Semgrep and SonarQube are review tools for a development host or CI, not runtime dependencies on the NAS.
+Replace `29` with the planned Docker Engine major version. The updater requires `/bin/bash`, `jq`, `curl`, `docker`, `realpath`, `readlink -f`, `mktemp -d`, `diff`, `date`, and GNU-compatible `timeout --foreground`, in addition to standard shell utilities. It also needs DSM's `synopkg` (DSM 7) or `synoservicectl` (DSM 6). For a Docker Engine 28+ target, the probe additionally checks `sha256sum`, `insmod`, `lsmod`, `iptables`, and `/bin/get_key_value`. Automatic module downloads are pinned to an upstream commit and checked against platform-specific SHA-256 hashes; new kernel/platform combinations need reviewed hashes or manually installed modules. `/bin/sh` may be a different shell; run scripts through their shebangs rather than invoking Bash scripts with `sh`. Semgrep and SonarQube are review tools for a development host or CI, not runtime dependencies on the NAS.
 
 The [virtual-dsm project](https://github.com/vdsm/virtual-dsm) can boot selected DSM 7 `.pat` releases, but requires a Linux KVM host; its README says Docker Desktop on macOS is unsupported. Its DSM 6 path has an [open D-Bus stability issue](https://github.com/vdsm/virtual-dsm/issues/1122), so validate DSM 6 on real hardware. The project further restricts use of Virtual DSM to official Synology hardware. Use actual NAS hardware for package, service-control, and kernel-module integration testing; keep every test to DSM 6 or DSM 7.
 

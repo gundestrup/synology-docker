@@ -8,10 +8,14 @@ trap 'rm -rf "$test_tmp_dir"' EXIT
 docker() {
   case "$1" in
     inspect)
-      if [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'true' ]; then
+      if [ "${3:-}" = '--format' ] && [ "${4:-}" = '{{.Config.Image}}' ]; then
+        printf 'example/test:1\n'
+      elif [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'true' ]; then
         printf '/web %s local\n' "$COMPOSE_PATH"
       elif [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'unmanaged' ]; then
-        printf '/web !---not_managed_by_compose---! local\n'
+        printf '/review-test !---not_managed_by_compose---! local\n'
+      elif [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'unmanaged-db' ]; then
+        printf '/review-test !---not_managed_by_compose---! db\n'
       else
         printf '%s\n' "$DOCKER_FIXTURE"
       fi
@@ -133,7 +137,24 @@ selected_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$sel
 [[ -f "$selected_dir/review-test.docker-compose.yml" ]]
 [[ -f "$selected_dir/review-test.env" ]]
 grep -Fq 'restart: unless-stopped' "$selected_dir/review-test.docker-compose.yml"
-printf 'Single-container Compose export tests passed\n'
+manifest_file="$selected_dir/compose-export-manifest.json"
+[[ -f "$manifest_file" ]]
+[[ "$(stat -c '%a' "$manifest_file")" == '600' ]]
+jq -e '.containers["review-test"].conversion == "written" and .containers["review-test"].requires_recreate == false' "$manifest_file" >/dev/null
+
+next_dir=$(mktemp -d)
+MOCK_LIST_MODE=unmanaged-db
+export MOCK_LIST_MODE
+next_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$next_dir" --container-dirs --next)
+[[ "$next_output" == *'Manifest updated'* ]]
+[[ -f "$next_dir/review-test/review-test.docker-compose.yml" ]]
+jq -e '.containers["review-test"].conversion == "written" and .containers["review-test"].requires_recreate == true' "$next_dir/compose-export-manifest.json" >/dev/null
+MOCK_LIST_MODE=unmanaged
+export MOCK_LIST_MODE
+next_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$next_dir" --container-dirs --next)
+[[ "$next_output" == *"No containers still use the removed 'db' logger"* ]]
+jq -e '.containers["review-test"].conversion == "updated" and .containers["review-test"].requires_recreate == false' "$next_dir/compose-export-manifest.json" >/dev/null
+printf 'Single-container, manifest, and next-container Compose export tests passed\n'
 
 for script in "$repo_dir"/*.sh; do
   bash -n "$script"
