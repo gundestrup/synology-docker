@@ -15,10 +15,15 @@ source "$repo_dir/syno_docker_update.sh"
 
 version_is_newer 100.0.0 29.9.9
 version_is_newer 29.10.0 29.9.9
-! version_is_newer 29.9.9 29.10.0
-! version_is_newer 29.0.0 29.0.0
+if version_is_newer 29.9.9 29.10.0 || version_is_newer 29.0.0 29.0.0; then
+  printf 'Version comparison unexpectedly accepted a downgrade/equal version\n' >&2
+  exit 1
+fi
 is_semver 29.1.0
-! is_semver 29.1
+if is_semver 29.1; then
+  printf 'Invalid semver unexpectedly accepted\n' >&2
+  exit 1
+fi
 
 if (curl() { return 22; }; target_docker_version=''; target_compose_version=''; detect_available_versions) >/dev/null 2>&1; then
   printf 'Docker lookup failure unexpectedly succeeded\n' >&2
@@ -175,8 +180,14 @@ execute_update_script >/dev/null
 [[ $(grep -c 'iptables -C FORWARD -j DOCKER-FORWARD' "$SYNO_DOCKER_SCRIPT") -eq 1 ]]
 printf 'Forwarding preflight and update tests passed\n'
 
-printf '#!/bin/sh\nif [ "$1" = status ]; then echo stopped; else exit 1; fi\n' > /usr/syno/bin/synopkg
-printf '#!/bin/sh\nif [ "$1" = --status ]; then echo stopped; else exit 1; fi\n' > /usr/syno/sbin/synoservicectl
+cat > /usr/syno/bin/synopkg <<'EOF'
+#!/bin/sh
+if [ "$1" = status ]; then echo stopped; else exit 1; fi
+EOF
+cat > /usr/syno/sbin/synoservicectl <<'EOF'
+#!/bin/sh
+if [ "$1" = --status ]; then echo stopped; else exit 1; fi
+EOF
 chmod +x /usr/syno/bin/synopkg /usr/syno/sbin/synoservicectl
 force='true'
 service_stopped='true'
@@ -186,8 +197,14 @@ for dsm_major_version in 6 7; do
     exit 1
   fi
 done
-printf '#!/bin/sh\nif [ "$1" = status ]; then echo started; fi\n' > /usr/syno/bin/synopkg
-printf '#!/bin/sh\nif [ "$1" = --status ]; then echo running; fi\n' > /usr/syno/sbin/synoservicectl
+cat > /usr/syno/bin/synopkg <<'EOF'
+#!/bin/sh
+if [ "$1" = status ]; then echo started; fi
+EOF
+cat > /usr/syno/sbin/synoservicectl <<'EOF'
+#!/bin/sh
+if [ "$1" = --status ]; then echo running; fi
+EOF
 for dsm_major_version in 6 7; do
   service_stopped='true'
   execute_start_syno >/dev/null
@@ -209,7 +226,10 @@ PLATFORM_VERSION=apollolake
 module_checksums
 [[ "$expected_ip4" == 'bdc0737e3193c3fadc0a77e8fc04a67ed3293c05c2c1b1b4105bf9e294f92345' ]]
 PLATFORM_VERSION=unknown
-! module_checksums >/dev/null 2>&1
+if module_checksums >/dev/null 2>&1; then
+  printf 'Unknown kernel module platform was accepted\n' >&2
+  exit 1
+fi
 MODULES_FOLDER="$test_tmp_dir/modules"
 mkdir -p "$MODULES_FOLDER"
 IP4MODULE=iptable_raw.ko
@@ -256,9 +276,15 @@ fi
 unset -f curl
 FILE="$test_tmp_dir/module-start.sh"
 printf '# Load raw modules\n' > "$FILE"
-! start_script_loads_modules >/dev/null
+if start_script_loads_modules >/dev/null; then
+  printf 'Startup module check passed before modules were configured\n' >&2
+  exit 1
+fi
 printf 'insmod %s/%s\n' "$MODULES_FOLDER" "$IP4MODULE" >> "$FILE"
-! start_script_loads_modules >/dev/null
+if start_script_loads_modules >/dev/null; then
+  printf 'Startup module check passed with only one module configured\n' >&2
+  exit 1
+fi
 printf 'insmod %s/%s\n' "$MODULES_FOLDER" "$IP6MODULE" >> "$FILE"
 start_script_loads_modules >/dev/null
 printf 'Pinned module checksum and startup checks passed\n'
@@ -319,7 +345,10 @@ temp_dir=''
 bash "$apparmor_script" --restore >/dev/null
 [[ ! -e "$profile" && ! -e "${profile}.synology-docker-managed" && ! -e "${parser}.real" ]]
 cmp -s /bin/true "$parser"
-! grep -q 'docker-default.profile' "$SYNO_DOCKER_SCRIPT"
+if grep -q 'docker-default.profile' "$SYNO_DOCKER_SCRIPT"; then
+  printf 'Unmanaged AppArmor profile entry remained in startup script\n' >&2
+  exit 1
+fi
 : > "$profiles"
 if (bash "$apparmor_script") >/dev/null 2>&1; then
   printf 'Failed AppArmor profile load was accepted\n' >&2
