@@ -223,6 +223,7 @@ printf 'DSM 6/7 service failure tests passed\n'
 source "$repo_dir/install_iptables_modules.sh"
 KERNEL_VERSION='4.4.302+'
 PLATFORM_VERSION=apollolake
+# shellcheck disable=SC2218 # The test intentionally overrides this function below.
 module_checksums
 [[ "$expected_ip4" == 'bdc0737e3193c3fadc0a77e8fc04a67ed3293c05c2c1b1b4105bf9e294f92345' ]]
 PLATFORM_VERSION=unknown
@@ -308,10 +309,10 @@ if (bash "$apparmor_script") >/dev/null 2>&1; then
 fi
 cmp -s /bin/true "$parser"
 rm "$profile"
-bash "$apparmor_script" >/dev/null
+(command bash "$apparmor_script") >/dev/null
 [[ -f "$profile" && -f "${profile}.synology-docker-managed" && -x "${parser}.real" ]]
 grep -q 'Synology DSM apparmor_parser wrapper' "$parser"
-bash "$apparmor_script" >/dev/null
+(command bash "$apparmor_script") >/dev/null
 docker_backup_filename='apparmor-state.tgz'
 execute_backup >/dev/null
 tar -tzf "$test_tmp_dir/apparmor-state.tgz" | grep -q 'docker-default.profile.synology-docker-managed'
