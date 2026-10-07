@@ -71,6 +71,35 @@ listing=$("$repo_dir/syno_docker_list_containers.sh")
 [[ "$listing" == *'/REVIEW_AND_CREATE_ENV_FILE_BEFORE_RUNNING'* ]]
 printf 'Container listing path and secret-redaction tests passed\n'
 
+export_dir=$(mktemp -d)
+jq -n '{
+  name:"exported-app", image:"example/exported:1", cmd:"/init",
+  enable_restart_policy:true, network_mode:"custom-net", use_host_network:false,
+  network:[{driver:"bridge",name:"custom-net"}],
+  env_variables:[{key:"TEST_SECRET",value:"do-not-print"},{key:"EMPTY_VALUE",value:""}],
+  port_bindings:[{container_port:8443,host_port:9443,type:"tcp"}],
+  volume_bindings:[{host_volume_file:"/docker/exported-app",is_directory:true,mount_point:"/config",type:"rw"}],
+  labels:{owner:"test"}, cpu_priority:50
+}' > "$export_dir/exported.json"
+converter_output=$("$repo_dir/syno_container_export_to_compose.sh" "$export_dir/exported.json" "$export_dir")
+[[ "$converter_output" != *'do-not-print'* ]]
+[[ -f "$export_dir/exported-app.docker-compose.yml" ]]
+grep -Fq 'container_name: "exported-app"' "$export_dir/exported-app.docker-compose.yml"
+grep -Fq 'restart: unless-stopped' "$export_dir/exported-app.docker-compose.yml"
+grep -Fq 'driver: local' "$export_dir/exported-app.docker-compose.yml"
+grep -Fq '"9443:8443/tcp"' "$export_dir/exported-app.docker-compose.yml"
+grep -Fq '"/volume1/docker/exported-app:/config:rw"' "$export_dir/exported-app.docker-compose.yml"
+grep -Fq 'custom-net' "$export_dir/exported-app.docker-compose.yml"
+grep -Fq 'external: true' "$export_dir/exported-app.docker-compose.yml"
+grep -Fxq 'TEST_SECRET=do-not-print' "$export_dir/exported-app.env"
+grep -Fxq 'EMPTY_VALUE=' "$export_dir/exported-app.env"
+[[ "$(stat -c '%a' "$export_dir/exported-app.env")" == '600' ]]
+if ("$repo_dir/syno_container_export_to_compose.sh" "$export_dir/exported.json" "$export_dir") >/dev/null 2>&1; then
+  printf 'Synology export converter overwrote existing files\n' >&2
+  exit 1
+fi
+printf 'Synology export conversion tests passed\n'
+
 for script in "$repo_dir"/*.sh; do
   bash -n "$script"
 done

@@ -111,6 +111,17 @@ cd /volume1/docker/jellyfin
 docker-compose up -d --force-recreate
 ```
 
+For a non‑Compose container, export its settings from Synology Container Manager and convert that JSON to a reviewed Compose file:
+
+```bash
+./syno_container_export_to_compose.sh /path/to/container-export.json /volume1/docker/container-name
+sudo docker rm container-name
+cd /volume1/docker/container-name
+sudo docker-compose -f container-name.docker-compose.yml up -d --force-recreate
+```
+
+The converter writes a private `<name>.env` file containing environment values and a `<name>.docker-compose.yml` file that forces the `local` logger. If the NAS data is not under `/volume1`, pass `--volume-root /volumeN`. Review mounts and ports before running. Removing the old stopped container does not remove its bind-mounted folders or named volumes.
+
 Re‑run `syno_docker_list_containers.sh` until **everything** says `local`. The listing includes stopped containers so `db`-logger failures remain visible.
 
 > Containers created via `docker run` will show a _best‑guess_ recreate command. Its environment values are deliberately hidden; replace the required `--env-file /REVIEW_AND_CREATE_ENV_FILE_BEFORE_RUNNING` with a reviewed, private environment file before use. Verify all remaining settings before running it.
