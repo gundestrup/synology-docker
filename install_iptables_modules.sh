@@ -8,7 +8,7 @@ curl_https_modules() {
 initialize_modules() {
 # Test if script has root privileges, exit otherwise
 id=$(id -u)
-if [ "${id}" -ne 0 ]; then
+if [[ "${id}" -ne 0 ]]; then
     echo "You need to run this with sudo or as root."
 	exit 1
 fi
@@ -17,9 +17,9 @@ MODULES_FOLDER="/lib/modules"
 IP4MODULE="iptable_raw.ko"
 IP6MODULE="ip6table_raw.ko"
 #Update to work with older Docker versions... untested
-if [ -f "/var/packages/ContainerManager/scripts/start-stop-status" ]; then
+if [[ -f "/var/packages/ContainerManager/scripts/start-stop-status" ]]; then
     readonly FILE="/var/packages/ContainerManager/scripts/start-stop-status"
-elif [ -f "/var/packages/Docker/scripts/start-stop-status" ]; then
+elif [[ -f "/var/packages/Docker/scripts/start-stop-status" ]]; then
     readonly FILE="/var/packages/Docker/scripts/start-stop-status"
 else
     echo "Could not locate Container Manager or Docker start-stop-status script."
@@ -69,8 +69,8 @@ modules_loaded() {
 
 module_files_present() {
   # Check if the kernel modules are present in the modules folder
-  IP4MODULE_PRESENT=$([ -f "$MODULES_FOLDER/$IP4MODULE" ] && echo 1 || echo 0)
-  IP6MODULE_PRESENT=$([ -f "$MODULES_FOLDER/$IP6MODULE" ] && echo 1 || echo 0)
+  IP4MODULE_PRESENT=$([[ -f "$MODULES_FOLDER/$IP4MODULE" ]] && echo 1 || echo 0)
+  IP6MODULE_PRESENT=$([[ -f "$MODULES_FOLDER/$IP6MODULE" ]] && echo 1 || echo 0)
   if [[ $IP4MODULE_PRESENT != 1 || $IP6MODULE_PRESENT != 1 ]]; then
     # both files were not present
     echo "false"
@@ -171,7 +171,7 @@ check_all() {
 
   echo
   echo -n " - available for download  ?"
-  if [ "$KOS_PLACED" = 'true' ]; then
+  if [[ "$KOS_PLACED" = 'true' ]]; then
     MOD_DL_AVAIL='true'
     echo " not needed (already installed)"
   else
@@ -195,8 +195,8 @@ download_and_place_modules() (
   trap 'rm -rf "$module_download_dir"' EXIT
   curl_https_modules -fsSL --connect-timeout 10 --max-time 120 "$IP4DL" -o "$module_download_dir/$IP4MODULE" && echo -n "." || return 1
   curl_https_modules -fsSL --connect-timeout 10 --max-time 120 "$IP6DL" -o "$module_download_dir/$IP6MODULE" && echo -n "." || return 1
-  if [ "$(sha256sum "$module_download_dir/$IP4MODULE" | cut -d' ' -f1)" != "$expected_ip4" ] ||
-    [ "$(sha256sum "$module_download_dir/$IP6MODULE" | cut -d' ' -f1)" != "$expected_ip6" ]; then
+  if [[ "$(sha256sum "$module_download_dir/$IP4MODULE" | cut -d' ' -f1)" != "$expected_ip4" ]] ||
+    [[ "$(sha256sum "$module_download_dir/$IP6MODULE" | cut -d' ' -f1)" != "$expected_ip6" ]]; then
     echo "Downloaded kernel module checksum did not match the pinned release" >&2
     return 1
   fi

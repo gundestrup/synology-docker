@@ -59,7 +59,7 @@ prompt_required() {
   local value
   printf '%s: ' "$prompt" >&2
   read -r value || fail "No value supplied"
-  [ -n "$value" ] || fail "No value supplied"
+  [[ -n "$value" ]] || fail "No value supplied"
   printf '%s' "$value"
 }
 
@@ -76,12 +76,12 @@ confirm_word() {
   local value
   printf 'Type %s to continue: ' "$word" >&2
   read -r value || fail "Operation not confirmed"
-  [ "$value" = "$word" ] || fail "Operation not confirmed"
+  [[ "$value" = "$word" ]] || fail "Operation not confirmed"
 }
 
 preflight() {
   local target=${1:-}
-  [ -n "$target" ] || target=$(prompt_default 'Target Docker Engine major version' '29')
+  [[ -n "$target" ]] || target=$(prompt_default 'Target Docker Engine major version' '29')
   sh "${SCRIPT_DIR}/tests/check-dsm-runtime.sh" "$target"
 }
 
@@ -95,20 +95,20 @@ recover_next() {
   local root=${1:-}
   shift || true
   local fresh='false'
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --fresh-anonymous-volumes) fresh='true' ;;
       *) usage ;;
     esac
     shift
   done
-  [ -n "$root" ] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
-  if [ "$fresh" != 'true' ] && [ -t 0 ]; then
+  [[ -n "$root" ]] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
+  if [[ "$fresh" != 'true' ]] && [[ -t 0 ]]; then
     ask_yes_no 'Replace anonymous volumes with fresh Docker-managed volumes' && fresh='true'
   fi
 
   local args=(--compose-dir "$root" --container-dirs --next)
-  [ "$fresh" = 'true' ] && args+=(--fresh-anonymous-volumes)
+  [[ "$fresh" = 'true' ]] && args+=(--fresh-anonymous-volumes)
   "${SCRIPT_DIR}/syno_docker_list_containers.sh" "${args[@]}"
   printf '\nNext: use the validate action for the generated container output.\n'
 }
@@ -117,20 +117,20 @@ export_all() {
   local root=${1:-}
   shift || true
   local fresh='false'
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --fresh-anonymous-volumes) fresh='true' ;;
       *) usage ;;
     esac
     shift
   done
-  [ -n "$root" ] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
-  if [ "$fresh" != 'true' ] && [ -t 0 ]; then
+  [[ -n "$root" ]] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
+  if [[ "$fresh" != 'true' ]] && [[ -t 0 ]]; then
     ask_yes_no 'Replace anonymous volumes with fresh Docker-managed volumes' && fresh='true'
   fi
 
   local args=(--compose-dir "$root" --container-dirs)
-  [ "$fresh" = 'true' ] && args+=(--fresh-anonymous-volumes)
+  [[ "$fresh" = 'true' ]] && args+=(--fresh-anonymous-volumes)
   "${SCRIPT_DIR}/syno_docker_list_containers.sh" "${args[@]}"
 }
 
@@ -138,7 +138,7 @@ compose_file_for() {
   local root=$1
   local name=$2
   local compose_file="${root}/${name}/${name}.docker-compose.yml"
-  if [ ! -f "$compose_file" ] && [ -f "${compose_file}.generated" ]; then
+  if [[ ! -f "$compose_file" ]] && [[ -f "${compose_file}.generated" ]]; then
     compose_file="${compose_file}.generated"
   fi
   printf '%s' "$compose_file"
@@ -147,11 +147,11 @@ compose_file_for() {
 validate_export() {
   local root=${1:-}
   local name=${2:-}
-  [ -n "$root" ] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
-  [ -n "$name" ] || name=$(prompt_required 'Container name')
+  [[ -n "$root" ]] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
+  [[ -n "$name" ]] || name=$(prompt_required 'Container name')
   local compose_file
   compose_file=$(compose_file_for "$root" "$name")
-  [ -f "$compose_file" ] || fail "Generated Compose file not found: $compose_file"
+  [[ -f "$compose_file" ]] || fail "Generated Compose file not found: $compose_file"
   compose -f "$compose_file" config >/dev/null
   printf 'Compose configuration is valid: %s\n' "$compose_file"
 }
@@ -159,11 +159,11 @@ validate_export() {
 recreate_export() {
   local root=${1:-}
   local name=${2:-}
-  [ -n "$root" ] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
-  [ -n "$name" ] || name=$(prompt_required 'Container name')
+  [[ -n "$root" ]] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
+  [[ -n "$name" ]] || name=$(prompt_required 'Container name')
   local compose_file logger
   compose_file=$(compose_file_for "$root" "$name")
-  [ -f "$compose_file" ] || fail "Generated Compose file not found: $compose_file"
+  [[ -f "$compose_file" ]] || fail "Generated Compose file not found: $compose_file"
   compose -f "$compose_file" config >/dev/null || fail "Generated Compose configuration is invalid"
   logger=$(docker inspect "$name" --format '{{.HostConfig.LogConfig.Type}}') || fail "Container not found: $name"
   printf 'Container %s currently uses logger: %s\n' "$name" "$logger"
@@ -175,8 +175,8 @@ recreate_export() {
 
 compose_recreate() {
   local compose_file=${1:-}
-  [ -n "$compose_file" ] || compose_file=$(prompt_required 'Compose file path')
-  [ -f "$compose_file" ] || fail "Compose file not found: $compose_file"
+  [[ -n "$compose_file" ]] || compose_file=$(prompt_required 'Compose file path')
+  [[ -f "$compose_file" ]] || fail "Compose file not found: $compose_file"
   compose -f "$compose_file" config >/dev/null || fail "Compose configuration is invalid"
   confirm_word 'RECREATE'
   (cd "$(dirname "$compose_file")" && compose -f "$(basename "$compose_file")" up -d --force-recreate)
@@ -184,9 +184,9 @@ compose_recreate() {
 
 show_manifest() {
   local root=${1:-}
-  [ -n "$root" ] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
+  [[ -n "$root" ]] || root=$(prompt_default 'Recovery output root' "$DEFAULT_COMPOSE_ROOT")
   local manifest_file="${root}/compose-export-manifest.json"
-  [ -f "$manifest_file" ] || fail "Manifest not found: $manifest_file"
+  [[ -f "$manifest_file" ]] || fail "Manifest not found: $manifest_file"
   jq -r '.containers | to_entries[] | "\(.key)\tlogger=\(.value.logger)\trecreate=\(.value.requires_recreate)\t\(.value.conversion)"' "$manifest_file"
 }
 
@@ -203,8 +203,8 @@ update() {
 downgrade() {
   local docker_version=${1:-}
   local compose_version=${2:-}
-  [ -n "$docker_version" ] || docker_version=$(prompt_required 'Target Docker Engine version')
-  [ -n "$compose_version" ] || compose_version=$(prompt_required 'Target Docker Compose version')
+  [[ -n "$docker_version" ]] || docker_version=$(prompt_required 'Target Docker Engine version')
+  [[ -n "$compose_version" ]] || compose_version=$(prompt_required 'Target Docker Compose version')
   printf 'Downgrading can invalidate kernel-module and AppArmor preparation. Create a backup first.\n'
   confirm_word 'DOWNGRADE'
   sudo "${SCRIPT_DIR}/syno_docker_update.sh" \
@@ -215,8 +215,8 @@ downgrade() {
 
 restore() {
   local backup_file=${1:-}
-  [ -n "$backup_file" ] || backup_file=$(prompt_required 'Backup archive path')
-  [ -f "$backup_file" ] || fail "Backup archive not found: $backup_file"
+  [[ -n "$backup_file" ]] || backup_file=$(prompt_required 'Backup archive path')
+  [[ -f "$backup_file" ]] || fail "Backup archive not found: $backup_file"
   printf 'This will stop Docker and restore binaries/configuration from %s.\n' "$backup_file"
   confirm_word 'RESTORE'
   sudo "${SCRIPT_DIR}/syno_docker_update.sh" --backup "$backup_file" restore
@@ -332,7 +332,7 @@ MENU
   done
 }
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   menu
   exit 0
 fi
@@ -341,19 +341,19 @@ action=$1
 shift
 case "$action" in
   preflight) preflight "$@" ;;
-  status) [ "$#" -eq 0 ] || usage; status ;;
-  list) [ "$#" -eq 0 ] || usage; "${SCRIPT_DIR}/syno_docker_list_containers.sh" ;;
+  status) [[ "$#" -eq 0 ]] || usage; status ;;
+  list) [[ "$#" -eq 0 ]] || usage; "${SCRIPT_DIR}/syno_docker_list_containers.sh" ;;
   next) recover_next "$@" ;;
   export-all) export_all "$@" ;;
   validate) validate_export "$@" ;;
   recreate) recreate_export "$@" ;;
   compose-recreate) compose_recreate "$@" ;;
   manifest) show_manifest "$@" ;;
-  backup) [ "$#" -eq 0 ] || usage; backup ;;
-  update) [ "$#" -eq 0 ] || usage; update ;;
+  backup) [[ "$#" -eq 0 ]] || usage; backup ;;
+  update) [[ "$#" -eq 0 ]] || usage; update ;;
   downgrade) downgrade "$@" ;;
   restore) restore "$@" ;;
-  menu) [ "$#" -eq 0 ] || usage; menu ;;
+  menu) [[ "$#" -eq 0 ]] || usage; menu ;;
   -h|--help|help) usage ;;
   *) usage ;;
 esac

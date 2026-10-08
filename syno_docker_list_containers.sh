@@ -25,11 +25,11 @@ next_container='false'
 fresh_anonymous_volumes='false'
 force='false'
 target_container=''
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --compose-dir)
       shift
-      [ "${1:-}" != '' ] || usage
+      [[ "${1:-}" != '' ]] || usage
       compose_dir=$1
       shift
       ;;
@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --manifest)
       shift
-      [ "${1:-}" != '' ] || usage
+      [[ "${1:-}" != '' ]] || usage
       manifest_file=$1
       shift
       ;;
@@ -62,20 +62,20 @@ while [ "$#" -gt 0 ]; do
       usage
       ;;
     *)
-      [ -z "$target_container" ] || usage
+      [[ -z "$target_container" ]] || usage
       target_container=$1
       shift
       ;;
   esac
 done
 
-if [ "$next_container" = 'true' ] && [ -n "$target_container" ]; then
+if [[ "$next_container" = 'true' ]] && [[ -n "$target_container" ]]; then
   fail "--next cannot be combined with a container name"
 fi
-if [ -z "$compose_dir" ] && { [ "$container_dirs" = 'true' ] || [ "$next_container" = 'true' ] || [ -n "$manifest_file" ]; }; then
+if [[ -z "$compose_dir" ]] && { [[ "$container_dirs" = 'true' ]] || [[ "$next_container" = 'true' ]] || [[ -n "$manifest_file" ]]; }; then
   fail "--container-dirs, --manifest, and --next require --compose-dir"
 fi
-if [ -n "$compose_dir" ]; then
+if [[ -n "$compose_dir" ]]; then
   command -v jq >/dev/null 2>&1 || fail "jq is required to maintain the export manifest"
   mkdir -p "$compose_dir" || fail "Could not create compose directory: $compose_dir"
   manifest_file=${manifest_file:-"${compose_dir}/compose-export-manifest.json"}
@@ -84,14 +84,14 @@ fi
 
 manifest_conversion_for() {
   local name=$1
-  if [ -n "$manifest_file" ] && [ -f "$manifest_file" ]; then
+  if [[ -n "$manifest_file" ]] && [[ -f "$manifest_file" ]]; then
     jq -r --arg name "$name" '.containers[$name].conversion // empty' "$manifest_file" 2>/dev/null || true
   fi
 }
 
 manifest_output_dir_for() {
   local name=$1
-  if [ "$container_dirs" = 'true' ]; then
+  if [[ "$container_dirs" = 'true' ]]; then
     printf '%s/%s\n' "$compose_dir" "$name"
   else
     printf '%s\n' "$compose_dir"
@@ -107,23 +107,23 @@ record_manifest() {
   local image requires_recreate compose_output env_output generated_compose generated_env
   local manifest_source manifest_temp now
 
-  [ "$compose_location" != "$NOT_COMPOSE" ] || compose_location=''
+  [[ "$compose_location" != "$NOT_COMPOSE" ]] || compose_location=''
   image=$(docker inspect "$name" --format '{{.Config.Image}}' 2>/dev/null || true)
   requires_recreate='false'
-  [ "$logger" = 'db' ] && requires_recreate='true'
+  [[ "$logger" = 'db' ]] && requires_recreate='true'
   compose_output=''
   env_output=''
   generated_compose=''
   generated_env=''
-  if [ -n "$output_dir" ]; then
+  if [[ -n "$output_dir" ]]; then
     compose_output="${output_dir}/${name}.docker-compose.yml"
-    [ -e "${output_dir}/${name}.env" ] && env_output="${output_dir}/${name}.env"
-    [ -e "${compose_output}.generated" ] && generated_compose="${compose_output}.generated"
-    [ -e "${output_dir}/${name}.env.generated" ] && generated_env="${output_dir}/${name}.env.generated"
+    [[ -e "${output_dir}/${name}.env" ]] && env_output="${output_dir}/${name}.env"
+    [[ -e "${compose_output}.generated" ]] && generated_compose="${compose_output}.generated"
+    [[ -e "${output_dir}/${name}.env.generated" ]] && generated_env="${output_dir}/${name}.env.generated"
   fi
   now=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
-  if [ -f "$manifest_file" ]; then
+  if [[ -f "$manifest_file" ]]; then
     manifest_source=$manifest_file
   else
     manifest_source=$(mktemp "${manifest_file}.source.XXXXXX")
@@ -160,22 +160,22 @@ record_manifest() {
         }
     ' "$manifest_source" > "$manifest_temp"; then
     rm -f "$manifest_temp"
-    [ "$manifest_source" = "$manifest_file" ] || rm -f "$manifest_source"
+    [[ "$manifest_source" = "$manifest_file" ]] || rm -f "$manifest_source"
     fail "Could not update manifest: $manifest_file"
   fi
 
-  [ "$manifest_source" = "$manifest_file" ] || rm -f "$manifest_source"
+  [[ "$manifest_source" = "$manifest_file" ]] || rm -f "$manifest_source"
   mv "$manifest_temp" "$manifest_file"
   chmod 600 "$manifest_file"
 }
 
 containers=()
-if [ -n "$target_container" ]; then
+if [[ -n "$target_container" ]]; then
   docker inspect "$target_container" >/dev/null
   containers+=("$target_container")
 else
   while IFS= read -r container_id; do
-    [ -n "$container_id" ] && containers+=("$container_id")
+    [[ -n "$container_id" ]] && containers+=("$container_id")
   done < <(docker ps -aq)
 fi
 
@@ -191,7 +191,7 @@ done
 # Sort the array based on the second field (compose location)
 sorted_containers_info=()
 while IFS= read -r info; do
-  [ -n "$info" ] || continue
+  [[ -n "$info" ]] || continue
   sorted_containers_info+=("$info")
 done < <(printf "%s\n" "${containers_info[@]}" | sort -t " " -k 2)
 # Original with -u - this unfortunately hides portainer containers.
@@ -206,9 +206,9 @@ for info in "${sorted_containers_info[@]}"; do
   logger=${info##* }
   location=${info#* }
   location=${location% *}
-  [ "${#container}" -gt "$max_container_length" ] && max_container_length=${#container}
-  [ "${#location}" -gt "$max_location_length" ] && max_location_length=${#location}
-  [ "${#logger}" -gt "$max_logger_length" ] && max_logger_length=${#logger}
+  [[ "${#container}" -gt "$max_container_length" ]] && max_container_length=${#container}
+  [[ "${#location}" -gt "$max_location_length" ]] && max_location_length=${#location}
+  [[ "${#logger}" -gt "$max_logger_length" ]] && max_logger_length=${#logger}
 done
 
 # Print the header
@@ -234,16 +234,16 @@ for info in "${sorted_containers_info[@]}"; do
   container_names+=("$container")
   container_locations+=("$raw_location")
   container_loggers+=("$logger")
-  if [ "$location" != "$NOT_COMPOSE" ] && [ ! -f "$location" ];then
+  if [[ "$location" != "$NOT_COMPOSE" ]] && [[ ! -f "$location" ]];then
   location="${MAYBE_PORTAINER}"
   fi
-  if [ "$raw_location" == "$NOT_COMPOSE" ]; then
+  if [[ "$raw_location" == "$NOT_COMPOSE" ]]; then
   docker_managed+=("$container")
   fi
   printf "%-${max_container_length}s  %-${max_location_length}s %s\n" "$container" "$location" "$logger"
 done
 
-if [ ${#docker_managed[@]} -gt 0 ]; then
+if [[ ${#docker_managed[@]} -gt 0 ]]; then
   # There are containers not managed by compose nor portainer.
   # Provide some clues on how to restart those containers.
   echo
@@ -262,25 +262,25 @@ if [ ${#docker_managed[@]} -gt 0 ]; then
   done
 fi
 
-if [ -n "$compose_dir" ]; then
+if [[ -n "$compose_dir" ]]; then
   converter_args=()
-  [ "$force" = 'true' ] && converter_args+=(--force)
-  [ "$fresh_anonymous_volumes" = 'true' ] && converter_args+=(--fresh-anonymous-volumes)
+  [[ "$force" = 'true' ]] && converter_args+=(--force)
+  [[ "$fresh_anonymous_volumes" = 'true' ]] && converter_args+=(--fresh-anonymous-volumes)
 
-  if [ "$next_container" = 'true' ]; then
+  if [[ "$next_container" = 'true' ]]; then
     next_index=''
     for index in "${!container_names[@]}"; do
-      if [ "${container_loggers[$index]}" = 'db' ]; then
+      if [[ "${container_loggers[$index]}" = 'db' ]]; then
         next_index=$index
         break
       fi
     done
 
-    if [ -z "$next_index" ]; then
+    if [[ -z "$next_index" ]]; then
       for index in "${!container_names[@]}"; do
         conversion='updated'
         manifest_output_dir=''
-        if [ "${container_locations[$index]}" != "$NOT_COMPOSE" ]; then
+        if [[ "${container_locations[$index]}" != "$NOT_COMPOSE" ]]; then
           conversion='compose-managed'
         else
           manifest_output_dir=$(manifest_output_dir_for "${container_names[$index]}")
@@ -293,17 +293,17 @@ if [ -n "$compose_dir" ]; then
       exit 0
     fi
 
-    if [ "${container_locations[$next_index]}" != "$NOT_COMPOSE" ]; then
+    if [[ "${container_locations[$next_index]}" != "$NOT_COMPOSE" ]]; then
       for index in "${!container_names[@]}"; do
         conversion='updated'
         manifest_output_dir=''
-        [ "${container_loggers[$index]}" = 'db' ] && conversion='pending'
-        if [ "${container_locations[$index]}" != "$NOT_COMPOSE" ]; then
+        [[ "${container_loggers[$index]}" = 'db' ]] && conversion='pending'
+        if [[ "${container_locations[$index]}" != "$NOT_COMPOSE" ]]; then
           conversion='compose-managed'
         else
           manifest_output_dir=$(manifest_output_dir_for "${container_names[$index]}")
         fi
-        if [ "$index" -eq "$next_index" ]; then
+        if [[ "$index" -eq "$next_index" ]]; then
           conversion='pending-compose-recreate'
         fi
         record_manifest "${container_names[$index]}" "${container_locations[$index]}" \
@@ -311,7 +311,7 @@ if [ -n "$compose_dir" ]; then
       done
       compose_path=${container_locations[$next_index]}
       echo "Next container requiring recreation: ${container_names[$next_index]}"
-      if [ -f "$compose_path" ]; then
+      if [[ -f "$compose_path" ]]; then
         echo "It is already Compose-managed. Review its Compose file, then run:"
         printf '  cd %q && docker compose -f %q up -d --force-recreate\n' \
           "$(dirname "$compose_path")" "$(basename "$compose_path")"
@@ -328,24 +328,24 @@ if [ -n "$compose_dir" ]; then
     raw_location=${container_locations[$index]}
     logger=${container_loggers[$index]}
 
-    if [ "$raw_location" != "$NOT_COMPOSE" ]; then
+    if [[ "$raw_location" != "$NOT_COMPOSE" ]]; then
       record_manifest "$container" "$raw_location" "$logger" 'compose-managed' ''
       continue
     fi
 
     output_dir=$(manifest_output_dir_for "$container")
 
-    if [ "$next_container" = 'true' ] && [ "$index" -ne "$next_index" ]; then
+    if [[ "$next_container" = 'true' ]] && [[ "$index" -ne "$next_index" ]]; then
       conversion=$(manifest_conversion_for "$container")
-      if [ -z "$conversion" ]; then
+      if [[ -z "$conversion" ]]; then
         conversion='pending'
-        [ "$logger" != 'db' ] && conversion='updated'
+        [[ "$logger" != 'db' ]] && conversion='updated'
       fi
       record_manifest "$container" "$raw_location" "$logger" "$conversion" "$output_dir"
       continue
     fi
 
-    if [ "$next_container" = 'true' ] && [ "$logger" != 'db' ]; then
+    if [[ "$next_container" = 'true' ]] && [[ "$logger" != 'db' ]]; then
       record_manifest "$container" "$raw_location" "$logger" 'updated' "$output_dir"
       continue
     fi
@@ -363,10 +363,10 @@ if [ -n "$compose_dir" ]; then
     fi
     rm -f "$inspect_temp" "$status_temp"
     record_manifest "$container" "$raw_location" "$logger" "$conversion" "$output_dir"
-    [ "$conversion" != 'conversion-failed' ] || exit 1
-    [ "$next_container" != 'true' ] || break
+    [[ "$conversion" != 'conversion-failed' ]] || exit 1
+    [[ "$next_container" != 'true' ]] || break
   done
   printf 'Manifest updated: %s\n' "$manifest_file"
-elif [ -n "$target_container" ] && [ ${#docker_managed[@]} -eq 0 ]; then
+elif [[ -n "$target_container" ]] && [[ ${#docker_managed[@]} -eq 0 ]]; then
   echo "Container is already Compose-managed or was not found."
 fi
