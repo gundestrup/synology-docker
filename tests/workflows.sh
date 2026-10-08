@@ -8,6 +8,7 @@ fi
 
 repo_dir=$(cd "$(dirname "$0")/.." && pwd -P)
 test_tmp_dir=$(mktemp -d)
+curl_args_file="$test_tmp_dir/curl-args"
 trap 'rm -rf "$test_tmp_dir"' EXIT
 mkdir -p /var/packages/ContainerManager/{target/usr/bin,etc,scripts} /usr/syno/{bin,sbin}
 docker() { [ "$1" = ps ]; }
@@ -30,6 +31,7 @@ if (curl() { return 22; }; target_docker_version=''; target_compose_version=''; 
   exit 1
 fi
 curl() {
+  printf '%s\n' "$*" > "$curl_args_file"
   case "$2" in
     "${DOWNLOAD_DOCKER}/") printf '>docker-9.9.9.tgz\n>docker-29.9.9.tgz\n>docker-100.0.0.tgz\n' ;;
     "$GITHUB_API_COMPOSE") printf '{"tag_name":"v2.42.0"}\n' ;;
@@ -41,6 +43,10 @@ target_compose_version=''
 detect_available_versions
 [[ "$target_docker_version" == '100.0.0' ]]
 [[ "$target_compose_version" == '2.42.0' ]]
+curl_args=$(<"$curl_args_file")
+[[ "$curl_args" == *"--proto =https"* ]]
+[[ "$curl_args" == *"--proto-redir =https"* ]]
+[[ "$curl_args" == *"--tlsv1.2"* ]]
 unset -f curl
 
 force='false'
@@ -243,6 +249,7 @@ module_checksums() {
 }
 module_checksums
 curl() {
+  printf '%s\n' "$*" > "$curl_args_file"
   local url='' destination=''
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -258,6 +265,10 @@ curl() {
   fi
 }
 download_and_place_modules >/dev/null
+curl_args=$(<"$curl_args_file")
+[[ "$curl_args" == *"--proto =https"* ]]
+[[ "$curl_args" == *"--proto-redir =https"* ]]
+[[ "$curl_args" == *"--tlsv1.2"* ]]
 [[ -f "$MODULES_FOLDER/$IP4MODULE" && -f "$MODULES_FOLDER/$IP6MODULE" ]]
 curl() {
   local destination=''

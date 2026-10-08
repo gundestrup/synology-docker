@@ -1,5 +1,10 @@
 #!/bin/bash
 
+readonly MODULE_CURL_HTTPS_FLAGS=(--proto '=https' --proto-redir '=https' --tlsv1.2)
+curl_https_modules() {
+  curl "$@" "${MODULE_CURL_HTTPS_FLAGS[@]}"
+}
+
 initialize_modules() {
 # Test if script has root privileges, exit otherwise
 id=$(id -u)
@@ -79,8 +84,8 @@ module_files_present() {
 
 modules_available_for_download() {
   # Check if the modules can be downloaded
-  IP4_AVAIL=$(curl -ILsS --connect-timeout 10 --max-time 30 -o /dev/null -w "%{http_code}" "$IP4DL")
-  IP6_AVAIL=$(curl -ILsS --connect-timeout 10 --max-time 30 -o /dev/null -w "%{http_code}" "$IP6DL")
+  IP4_AVAIL=$(curl_https_modules -ILsS --connect-timeout 10 --max-time 30 -o /dev/null -w "%{http_code}" "$IP4DL")
+  IP6_AVAIL=$(curl_https_modules -ILsS --connect-timeout 10 --max-time 30 -o /dev/null -w "%{http_code}" "$IP6DL")
   if [[ "$IP4_AVAIL" != "200" || "$IP6_AVAIL" != "200" ]]; then
     # both files not available for download.
     echo "false"
@@ -188,8 +193,8 @@ download_and_place_modules() (
   command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required to verify kernel modules" >&2; return 1; }
   module_download_dir=$(mktemp -d "${TMPDIR:-/tmp}/synology-docker-modules.XXXXXX") || return 1
   trap 'rm -rf "$module_download_dir"' EXIT
-  curl -fsSL --connect-timeout 10 --max-time 120 "$IP4DL" -o "$module_download_dir/$IP4MODULE" && echo -n "." || return 1
-  curl -fsSL --connect-timeout 10 --max-time 120 "$IP6DL" -o "$module_download_dir/$IP6MODULE" && echo -n "." || return 1
+  curl_https_modules -fsSL --connect-timeout 10 --max-time 120 "$IP4DL" -o "$module_download_dir/$IP4MODULE" && echo -n "." || return 1
+  curl_https_modules -fsSL --connect-timeout 10 --max-time 120 "$IP6DL" -o "$module_download_dir/$IP6MODULE" && echo -n "." || return 1
   if [ "$(sha256sum "$module_download_dir/$IP4MODULE" | cut -d' ' -f1)" != "$expected_ip4" ] ||
     [ "$(sha256sum "$module_download_dir/$IP6MODULE" | cut -d' ' -f1)" != "$expected_ip6" ]; then
     echo "Downloaded kernel module checksum did not match the pinned release" >&2

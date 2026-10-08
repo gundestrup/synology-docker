@@ -57,6 +57,10 @@ readonly DOWNLOAD_DOCKER="https://download.docker.com/linux/static/stable/${CPU_
 readonly DOWNLOAD_GITHUB='https://github.com/docker/compose'
 readonly PINNED_RUNC='https://github.com/opencontainers/runc/releases/download/v1.3.2/runc.amd64'
 readonly GITHUB_API_COMPOSE='https://api.github.com/repos/docker/compose/releases/latest'
+readonly UPDATE_CURL_HTTPS_FLAGS=(--proto '=https' --proto-redir '=https' --tlsv1.2)
+curl_https_update() {
+  curl "$@" "${UPDATE_CURL_HTTPS_FLAGS[@]}"
+}
 if [ -d "/var/packages/ContainerManager" ]; then
   readonly SYNO_DOCKER_DIR='/var/packages/ContainerManager'
   readonly SYNO_DOCKER_SERV_NAME='ContainerManager'
@@ -303,7 +307,7 @@ detect_available_downloads() {
 detect_available_versions() {
   # Detect latest available Docker version
   if [ -z "${target_docker_version}" ] && [ "${skip_docker_update}" = 'false' ]; then
-    docker_index=$(curl -fsSL "${DOWNLOAD_DOCKER}/") || terminate "Could not query available Docker versions"
+    docker_index=$(curl_https_update -fsSL "${DOWNLOAD_DOCKER}/") || terminate "Could not query available Docker versions"
     docker_bin_files=$(printf '%s\n' "$docker_index" | grep -Eo '>docker-[0-9]+\.[0-9]+\.[0-9]+\.tgz' | cut -c 2-)
     while IFS= read -r docker_bin; do
       [ -n "$docker_bin" ] || continue
@@ -318,7 +322,7 @@ detect_available_versions() {
 
   # Detect latest available stable Docker Compose version (ignores release candidates)
   if [ -z "${target_compose_version}" ] && [ "${skip_compose_update}" = 'false' ]; then
-    compose_release=$(curl -fsSL "${GITHUB_API_COMPOSE}") || terminate "Could not query available Docker Compose versions"
+    compose_release=$(curl_https_update -fsSL "${GITHUB_API_COMPOSE}") || terminate "Could not query available Docker Compose versions"
     target_compose_version=$(printf '%s\n' "$compose_release" | jq -er '.tag_name | ltrimstr("v")') || terminate "Could not detect Docker Compose version"
     is_semver "$target_compose_version" || terminate "Unrecognized available Docker Compose version: $target_compose_version"
   fi
@@ -858,7 +862,7 @@ execute_download_bin() {
   if [ "${skip_docker_update}" = 'false' ] ; then
     target_docker_bin="docker-${target_docker_version}.tgz"
     print_status "Downloading target Docker binary (${DOWNLOAD_DOCKER}/${target_docker_bin})"
-    response=$(curl "${DOWNLOAD_DOCKER}/$target_docker_bin" --write-out '%{http_code}' \
+    response=$(curl_https_update "${DOWNLOAD_DOCKER}/$target_docker_bin" --write-out '%{http_code}' \
       -o "${download_dir}/${target_docker_bin}")
     if [ "${response}" != 200 ] ; then
       terminate "Binary could not be downloaded"
@@ -895,7 +899,7 @@ execute_extract_bin() {
     # override runc binary on Kernels 5+ is present
     if uname -r | grep -q '^5\.'; then
       print_status "Detected Kernel v5, downloading / pinning runc version."
-      response=$(curl -L "${PINNED_RUNC}" --write-out '%{http_code}' -o "${temp_dir}/docker/runc")
+      response=$(curl_https_update -L "${PINNED_RUNC}" --write-out '%{http_code}' -o "${temp_dir}/docker/runc")
       if [ "${response}" != 200 ] ; then
         terminate "runc binary could not be downloaded"
       fi
@@ -968,7 +972,7 @@ execute_download_compose() {
     fi
 
     print_status "Downloading target Docker Compose binary (${compose_bin})"
-    response=$(curl -L "${compose_bin}" --write-out '%{http_code}' -o "${download_dir}/docker-compose")
+    response=$(curl_https_update -L "${compose_bin}" --write-out '%{http_code}' -o "${download_dir}/docker-compose")
     if [ "${response}" != 200 ] ; then
       terminate "Binary could not be downloaded"
     fi
