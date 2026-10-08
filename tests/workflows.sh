@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "${DSM_MOCK_CONTAINER:-}" != '1' ] || [ "$(id -u)" -ne 0 ]; then
+if [[ "${DSM_MOCK_CONTAINER:-}" != '1' ]] || [[ "$(id -u)" -ne 0 ]]; then
   printf 'Run this test only inside the disposable Docker test image\n' >&2
   exit 1
 fi
@@ -11,7 +11,7 @@ test_tmp_dir=$(mktemp -d)
 curl_args_file="$test_tmp_dir/curl-args"
 trap 'rm -rf "$test_tmp_dir"' EXIT
 mkdir -p /var/packages/ContainerManager/{target/usr/bin,etc,scripts} /usr/syno/{bin,sbin}
-docker() { [ "$1" = ps ]; }
+docker() { [[ "$1" = ps ]]; }
 source "$repo_dir/syno_docker_update.sh"
 
 version_is_newer 100.0.0 29.9.9
@@ -251,14 +251,14 @@ module_checksums
 curl() {
   printf '%s\n' "$*" > "$curl_args_file"
   local url='' destination=''
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       -o) destination=$2; shift 2 ;;
       https:*) url=$1; shift ;;
       *) shift ;;
     esac
   done
-  if [ "$url" = "$IP4DL" ]; then
+  if [[ "$url" = "$IP4DL" ]]; then
     printf 'ip4\n' > "$destination"
   else
     printf 'ip6\n' > "$destination"
@@ -272,7 +272,7 @@ curl_args=$(<"$curl_args_file")
 [[ -f "$MODULES_FOLDER/$IP4MODULE" && -f "$MODULES_FOLDER/$IP6MODULE" ]]
 curl() {
   local destination=''
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       -o) destination=$2; shift 2 ;;
       *) shift ;;
@@ -332,7 +332,7 @@ temp_dir=$(mktemp -d)
 execute_extract_backup >/dev/null
 skip_docker_update='false'
 bash() {
-  if [ "$1" = "${SCRIPT_DIR}/install_apparmor_profile.sh" ]; then
+  if [[ "$1" = "${SCRIPT_DIR}/install_apparmor_profile.sh" ]]; then
     shift
     command bash "$apparmor_script" "$@"
   else
@@ -403,7 +403,7 @@ stage_output=$(
   runc() { printf 'runc version 1.1.0\n'; }
   curl() {
     local url='' destination=''
-    while [ "$#" -gt 0 ]; do
+    while [[ "$#" -gt 0 ]]; do
       case "$1" in
         -o) destination=$2; shift 2 ;;
         https:*) url=$1; shift ;;

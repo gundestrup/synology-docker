@@ -8,20 +8,20 @@ trap 'rm -rf "$test_tmp_dir"' EXIT
 docker() {
   case "$1" in
     inspect)
-      if [ "${3:-}" = '--format' ] && [ "${4:-}" = '{{.Config.Image}}' ]; then
+      if [[ "${3:-}" = '--format' ]] && [[ "${4:-}" = '{{.Config.Image}}' ]]; then
         printf 'example/test:1\n'
-      elif [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'true' ]; then
+      elif [[ "${3:-}" = '--format' ]] && [[ "${MOCK_LIST_MODE:-}" = 'true' ]]; then
         printf '/web %s local\n' "$COMPOSE_PATH"
-      elif [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'unmanaged' ]; then
+      elif [[ "${3:-}" = '--format' ]] && [[ "${MOCK_LIST_MODE:-}" = 'unmanaged' ]]; then
         printf '/review-test !---not_managed_by_compose---! local\n'
-      elif [ "${3:-}" = '--format' ] && [ "${MOCK_LIST_MODE:-}" = 'unmanaged-db' ]; then
+      elif [[ "${3:-}" = '--format' ]] && [[ "${MOCK_LIST_MODE:-}" = 'unmanaged-db' ]]; then
         printf '/review-test !---not_managed_by_compose---! db\n'
       else
         printf '%s\n' "$DOCKER_FIXTURE"
       fi
       ;;
     ps)
-      [ "${2:-}" = '-aq' ] || return 2
+      [[ "${2:-}" = '-aq' ]] || return 2
       printf '%s\n' "${MOCK_DOCKER_IDS:-}"
       ;;
     run)
