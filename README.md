@@ -5,7 +5,7 @@
 >
 > Originally forked from [markdumay/synology-docker](https://github.com/markdumay/synology-docker)
 
-[![CI](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml/badge.svg)](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml) ![Last Commit][synology-docker-last-commit] ![Issues][synology-docker-issues] ![Pull Requests][synology-docker-pulls] ![License][synology-docker-license] [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gundestrup/synology-docker)
+[![CI](https://github.com/telnetdoogie-labs/synology-docker/actions/workflows/ci.yml/badge.svg)](https://github.com/telnetdoogie-labs/synology-docker/actions/workflows/ci.yml) ![Last Commit][synology-docker-last-commit] ![Issues][synology-docker-issues] ![Pull Requests][synology-docker-pulls] ![License][synology-docker-license]
 
 ## Why this exists
 
