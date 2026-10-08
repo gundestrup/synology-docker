@@ -4,6 +4,8 @@
 
 - Added GitHub Actions CI for the Docker regression suite, Bash syntax checks, ShellCheck, and Semgrep without requiring SonarCloud or Semgrep account tokens.
 - Restricted curl downloads and redirects to HTTPS with a TLS 1.2 minimum so update and kernel-module downloads cannot be downgraded by a redirect.
+- Standardized conditional tests in Bash-only scripts on `[[ ... ]]`; generated `/bin/sh` helpers and DSM startup snippets intentionally retain POSIX `[ ... ]`.
+- Documented the disposable test image's root user as intentional because mocked DSM paths require privileged filesystem access.
 - Made `--stage` skip iptables kernel-module and AppArmor installation. Staging should prepare and inspect an update without mutating host configuration.
 - Shell-escaped every argument in generated container recreation commands and preserved command arguments individually. Container metadata must not become executable shell syntax when a suggested command is copied.
 - Stopped update and restore workflows when binary, ownership, permissions, log-driver, or restore-file operations fail; logger configuration now uses a temporary file and reports invalid JSON or replacement failures. Continuing after a partial install could leave Docker in a mixed or unusable state while reporting success.
