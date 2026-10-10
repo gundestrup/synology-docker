@@ -16,6 +16,15 @@ docker() {
         printf '/review-test !---not_managed_by_compose---! local\n'
       elif [[ "${3:-}" = '--format' ]] && [[ "${MOCK_LIST_MODE:-}" = 'unmanaged-db' ]]; then
         printf '/review-test !---not_managed_by_compose---! db\n'
+      elif [[ "${3:-}" = '--format' ]] && [[ "${MOCK_LIST_MODE:-}" = 'compose-db' ]]; then
+        printf '/compose-web %s db\n' "$COMPOSE_PATH"
+      elif [[ "${3:-}" = '--format' ]] && [[ "${MOCK_LIST_MODE:-}" = 'multi' ]]; then
+        case "$2" in
+          compose-web) printf '/compose-web %s local\n' "$COMPOSE_PATH" ;;
+          db-one) printf '/db-one !---not_managed_by_compose---! db\n' ;;
+          db-two) printf '/db-two !---not_managed_by_compose---! db\n' ;;
+          *) return 1 ;;
+        esac
       else
         printf '%s\n' "$DOCKER_FIXTURE"
       fi
@@ -28,6 +37,13 @@ docker() {
       shift
       printf 'MOCK_DOCKER_RUN\n'
       printf '<%s>\n' "$@"
+      ;;
+    stop|rm)
+      [[ -z "${MOCK_DOCKER_LOG:-}" ]] || printf '%s %s\n' "$1" "${2:-}" >> "$MOCK_DOCKER_LOG"
+      ;;
+    compose)
+      shift
+      [[ -z "${MOCK_DOCKER_LOG:-}" ]] || printf 'compose %s\n' "$*" >> "$MOCK_DOCKER_LOG"
       ;;
     *)
       return 2
@@ -112,6 +128,54 @@ changed_conversion=$("$repo_dir/syno_container_export_to_compose.sh" "$export_di
 [[ ! -e "$export_dir/exported-app.docker-compose.yml.generated" ]]
 printf 'Synology export conversion and reconciliation tests passed\n'
 
+custom_volume_dir=$(mktemp -d)
+"$repo_dir/syno_container_export_to_compose.sh" --volume-root /volume7 \
+  "$export_dir/exported.json" "$custom_volume_dir" >/dev/null
+grep -Fq '"/volume7/docker/exported-app:/config:rw"' \
+  "$custom_volume_dir/exported-app.docker-compose.yml"
+if grep -Fq '"/volume1/docker/exported-app:/config:rw"' \
+  "$custom_volume_dir/exported-app.docker-compose.yml"; then
+  printf 'Custom volume root was ignored\n' >&2
+  exit 1
+fi
+if volume_root_error=$("$repo_dir/syno_container_export_to_compose.sh" --volume-root 2>&1); then
+  printf 'Missing volume-root argument was accepted\n' >&2
+  exit 1
+fi
+[[ "$volume_root_error" == *'--volume-root requires a path'* ]]
+
+invalid_json_dir=$(mktemp -d)
+printf '{invalid\n' > "$invalid_json_dir/invalid.json"
+if invalid_json_output=$("$repo_dir/syno_container_export_to_compose.sh" \
+  "$invalid_json_dir/invalid.json" "$invalid_json_dir" 2>&1); then
+  printf 'Invalid JSON export was accepted\n' >&2
+  exit 1
+fi
+[[ "$invalid_json_output" == *'Invalid JSON export'* ]]
+[[ ! -e "$invalid_json_dir/invalid.docker-compose.yml" ]]
+[[ ! -e "$invalid_json_dir/invalid.env" ]]
+printf '{"image":"example/missing-name:1"}\n' > "$invalid_json_dir/missing-name.json"
+if missing_name_output=$("$repo_dir/syno_container_export_to_compose.sh" \
+  "$invalid_json_dir/missing-name.json" "$invalid_json_dir" 2>&1); then
+  printf 'Export without a container name was accepted\n' >&2
+  exit 1
+fi
+[[ "$missing_name_output" == *'Export does not contain a container name'* ]]
+printf '{"name":"missing-image"}\n' > "$invalid_json_dir/missing-image.json"
+if missing_image_output=$("$repo_dir/syno_container_export_to_compose.sh" \
+  "$invalid_json_dir/missing-image.json" "$invalid_json_dir" 2>&1); then
+  printf 'Export without an image was accepted\n' >&2
+  exit 1
+fi
+[[ "$missing_image_output" == *'Export does not contain an image'* ]]
+if missing_file_output=$("$repo_dir/syno_container_export_to_compose.sh" \
+  "$invalid_json_dir/missing.json" "$invalid_json_dir" 2>&1); then
+  printf 'Missing export input was accepted\n' >&2
+  exit 1
+fi
+[[ "$missing_file_output" == *'Export file not found'* ]]
+printf 'Volume-root and malformed export tests passed\n'
+
 inspect_dir=$(mktemp -d)
 printf '%s\n' "$DOCKER_FIXTURE" > "$inspect_dir/inspect.json"
 converter_output=$("$repo_dir/syno_container_export_to_compose.sh" "$inspect_dir/inspect.json" "$inspect_dir")
@@ -182,6 +246,76 @@ menu_output=$(printf '3\n0\n0\n' | "$repo_dir/syno_docker_recovery.sh")
 [[ "$menu_output" == *'Convert containers away from the removed db logger'* ]]
 [[ "$menu_output" == *'inventory -> export -> validate -> recreate'* ]]
 printf 'Single-container, manifest, recovery-menu, and next-container Compose export tests passed\n'
+
+MOCK_LIST_MODE=unmanaged-db
+MOCK_DOCKER_LOG="$test_tmp_dir/docker-calls.log"
+: > "$MOCK_DOCKER_LOG"
+export MOCK_LIST_MODE MOCK_DOCKER_LOG
+recreate_output=$(printf 'RECREATE\n' | "$repo_dir/syno_docker_recovery.sh" recreate "$next_dir" review-test)
+[[ "$recreate_output" == *'currently uses logger'* ]]
+grep -Fxq 'stop review-test' "$MOCK_DOCKER_LOG"
+grep -Fxq 'rm review-test' "$MOCK_DOCKER_LOG"
+grep -Fq 'up -d --force-recreate' "$MOCK_DOCKER_LOG"
+stop_line=$(grep -nFx 'stop review-test' "$MOCK_DOCKER_LOG" | cut -d: -f1)
+rm_line=$(grep -nFx 'rm review-test' "$MOCK_DOCKER_LOG" | cut -d: -f1)
+[[ "$stop_line" -lt "$rm_line" ]]
+printf 'Recovery recreate stop-before-remove tests passed\n'
+
+validate_output=$("$repo_dir/syno_docker_recovery.sh" validate "$next_dir" review-test)
+[[ "$validate_output" == *'Compose configuration is valid'* ]]
+: > "$MOCK_DOCKER_LOG"
+printf 'RECREATE\n' | "$repo_dir/syno_docker_recovery.sh" \
+  compose-recreate "$next_dir/review-test/review-test.docker-compose.yml" >/dev/null
+grep -Fq 'compose -f review-test.docker-compose.yml up -d --force-recreate' "$MOCK_DOCKER_LOG"
+: > "$MOCK_DOCKER_LOG"
+if printf 'WRONG\n' | "$repo_dir/syno_docker_recovery.sh" recreate "$next_dir" review-test >/dev/null 2>&1; then
+  printf 'Recreate proceeded without RECREATE confirmation\n' >&2
+  exit 1
+fi
+if grep -Eq '^(stop|rm) ' "$MOCK_DOCKER_LOG"; then
+  printf 'Recreate touched Docker after an aborted confirmation\n' >&2
+  exit 1
+fi
+if "$repo_dir/syno_docker_recovery.sh" recreate "$next_dir" missing-container </dev/null >/dev/null 2>&1; then
+  printf 'Recreate succeeded for a missing container export\n' >&2
+  exit 1
+fi
+printf 'Recovery validate, compose-recreate, and aborted-confirmation tests passed\n'
+
+multi_dir=$(mktemp -d)
+MOCK_LIST_MODE=multi
+MOCK_DOCKER_IDS=$'compose-web\ndb-one\ndb-two'
+export MOCK_LIST_MODE MOCK_DOCKER_IDS
+next_multi_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$multi_dir" --container-dirs --next)
+[[ "$next_multi_output" == *"$multi_dir/db-one"* ]]
+[[ -f "$multi_dir/db-one/review-test.docker-compose.yml" ]]
+[[ ! -e "$multi_dir/db-two/review-test.docker-compose.yml" ]]
+jq -e '.containers["db-one"].conversion == "written"
+  and .containers["db-two"].conversion == "pending"
+  and .containers["compose-web"].conversion == "compose-managed"' \
+  "$multi_dir/compose-export-manifest.json" >/dev/null
+
+all_dir=$(mktemp -d)
+"$repo_dir/syno_docker_list_containers.sh" --compose-dir "$all_dir" --container-dirs >/dev/null
+[[ -f "$all_dir/db-one/review-test.docker-compose.yml" ]]
+[[ -f "$all_dir/db-two/review-test.docker-compose.yml" ]]
+jq -e '.containers["db-one"].conversion == "written"
+  and .containers["db-two"].conversion == "written"
+  and .containers["compose-web"].conversion == "compose-managed"' \
+  "$all_dir/compose-export-manifest.json" >/dev/null
+printf 'Multi-container export and next-selection tests passed\n'
+
+cdb_dir=$(mktemp -d)
+MOCK_LIST_MODE=compose-db
+MOCK_DOCKER_IDS=compose-web
+export MOCK_LIST_MODE MOCK_DOCKER_IDS
+cdb_output=$("$repo_dir/syno_docker_list_containers.sh" --compose-dir "$cdb_dir" --container-dirs --next)
+[[ "$cdb_output" == *'already Compose-managed'* ]]
+[[ "$cdb_output" == *'docker compose -f'*'--force-recreate'* ]]
+[[ ! -e "$cdb_dir/compose-web" ]]
+jq -e '.containers["compose-web"].conversion == "pending-compose-recreate"' \
+  "$cdb_dir/compose-export-manifest.json" >/dev/null
+printf 'Compose-managed next-container tests passed\n'
 
 for script in "$repo_dir"/*.sh; do
   bash -n "$script"

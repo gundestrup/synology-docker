@@ -364,7 +364,6 @@ if [[ -n "$compose_dir" ]]; then
     rm -f "$inspect_temp" "$status_temp"
     record_manifest "$container" "$raw_location" "$logger" "$conversion" "$output_dir"
     [[ "$conversion" != 'conversion-failed' ]] || exit 1
-    [[ "$next_container" != 'true' ]] || break
   done
   printf 'Manifest updated: %s\n' "$manifest_file"
 elif [[ -n "$target_container" ]] && [[ ${#docker_managed[@]} -eq 0 ]]; then

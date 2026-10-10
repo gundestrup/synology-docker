@@ -430,3 +430,312 @@ stage_dir=$(printf '%s\n' "$stage_output" | sed -n 's/^Staged files: //p' | tail
 [[ $(sha256sum "$SYNO_DOCKER_SCRIPT" | cut -d' ' -f1) == "$installed_script_hash" ]]
 rm -rf "$stage_dir"
 printf 'Stage workflow retains its downloads without changing the installed binaries\n'
+
+cp "$repo_dir/test_file/dockerd.json" "$SYNO_DOCKER_JSON"
+cp "$repo_dir/test_file/start-stop-status" "$SYNO_DOCKER_SCRIPT"
+
+logger_json="$test_tmp_dir/dockerd-switch.json"
+cp "$repo_dir/test_file/dockerd.json" "$logger_json"
+sh "$repo_dir/syno_docker_switch_logger.sh" "$logger_json" >/dev/null
+[[ "$(jq -r '.["log-driver"]' "$logger_json")" == 'local' ]]
+[[ "$(jq -r '.["log-opts"]["max-file"]' "$logger_json")" == '5' ]]
+[[ "$(jq -r '.["log-opts"]["max-size"]' "$logger_json")" == '20m' ]]
+[[ "$(jq -r '.["storage-driver"]' "$logger_json")" == 'btrfs' ]]
+[[ "$(jq -r '.runtimes.nvidia.path' "$logger_json")" == '/usr/bin/nvidia-container-runtime' ]]
+printf '{invalid\n' > "$logger_json"
+if (sh "$repo_dir/syno_docker_switch_logger.sh" "$logger_json") >/dev/null 2>&1; then
+  printf 'Invalid dockerd.json was accepted\n' >&2
+  exit 1
+fi
+[[ "$(cat "$logger_json")" == '{invalid' ]]
+if (sh "$repo_dir/syno_docker_switch_logger.sh" "$test_tmp_dir/missing.json") >/dev/null 2>&1; then
+  printf 'Missing dockerd.json was accepted\n' >&2
+  exit 1
+fi
+printf 'Logger switch tests passed\n'
+
+cat > /usr/syno/bin/synopkg <<'EOF'
+#!/bin/sh
+state=/tmp/synopkg-state
+[ -f "$state" ] || echo started > "$state"
+case "$1" in
+  status) cat "$state" ;;
+  stop) echo stopped > "$state" ;;
+  start) echo started > "$state" ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x /usr/syno/bin/synopkg
+rm -f /tmp/synopkg-state
+printf 'docker-default (enforce)\n' > "$profiles"
+printf 'Y\n' > "$enabled"
+
+update_output=$(
+  docker() {
+    case "$1" in
+      ps) return 0 ;;
+      -v) printf 'Docker version 28.0.0, build test\n' ;;
+      *) return 1 ;;
+    esac
+  }
+  docker-compose() { printf 'Docker Compose version v2.1.1\n'; }
+  containerd() { printf 'containerd containerd.io v1.7.0\n'; }
+  runc() { printf 'runc version 1.1.0\n'; }
+  curl() {
+    local url='' destination=''
+    while [[ "$#" -gt 0 ]]; do
+      case "$1" in
+        -o) destination=$2; shift 2 ;;
+        https:*) url=$1; shift ;;
+        *) shift ;;
+      esac
+    done
+    case "$url" in
+      "$DOWNLOAD_DOCKER/docker-29.0.0.tgz") cp "$test_tmp_dir/engine.tgz" "$destination" ;;
+      */docker-compose-linux-x86_64) cp "$test_tmp_dir/compose-binary" "$destination" ;;
+      *) return 22 ;;
+    esac
+    printf 200
+  }
+  bash() {
+    if [[ "$1" = "${SCRIPT_DIR}/install_apparmor_profile.sh" ]]; then
+      shift
+      command bash "$apparmor_script" "$@"
+    else
+      command bash "$@"
+    fi
+  }
+  download_dir=''
+  temp_dir=''
+  service_stopped='false'
+  stage='false'
+  command=''
+  target='all'
+  skip_docker_update='false'
+  skip_compose_update='false'
+  skip_driver_update='false'
+  skip_iptables_modules='false'
+  install_iptables_modules='false'
+  install_apparmor='false'
+  backup_filename_flag='false'
+  main --force --skip-iptables --path "$test_tmp_dir" --backup update-apply.tgz \
+    --docker 29.0.0 --compose 2.42.0 update
+)
+[[ "$update_output" == *'Done.'* ]]
+grep -q 'staged-only' "$SYNO_DOCKER_BIN/docker"
+[[ "$(cat "$SYNO_DOCKER_BIN/docker-compose")" == 'compose-binary' ]]
+[[ "$(jq -r '.["log-driver"]' "$SYNO_DOCKER_JSON")" == 'local' ]]
+[[ "$(jq -r '.["log-opts"]["max-file"]' "$SYNO_DOCKER_JSON")" == '5' ]]
+grep -q 'iptables -C FORWARD -j DOCKER-FORWARD' "$SYNO_DOCKER_SCRIPT"
+[[ -f "$test_tmp_dir/update-apply.tgz" ]]
+[[ "$(cat /tmp/synopkg-state)" == 'started' ]]
+[[ -f "${profile}.synology-docker-managed" && -x "${parser}.real" ]]
+[[ -z "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'docker_update.*' -print -quit)" ]]
+printf 'Non-stage update apply-path tests passed\n'
+
+force='false'
+skip_docker_update='false'
+skip_compose_update='true'
+skip_driver_update='false'
+confirm_output=$(confirm_operation <<'EOF'
+retry
+YES
+EOF
+)
+[[ "$confirm_output" == *'Please answer y(es) or n(o)'* ]]
+[[ "$confirm_output" == *'Docker Engine'* ]]
+[[ "$confirm_output" != *'Docker Compose'* ]]
+confirm_sentinel="$test_tmp_dir/confirm-aborted"
+(
+  confirm_operation <<'EOF'
+n
+EOF
+  : > "$confirm_sentinel"
+)
+[[ ! -e "$confirm_sentinel" ]]
+force='true'
+confirm_output=$(confirm_operation </dev/null)
+[[ -z "$confirm_output" ]]
+force='false'
+printf 'Confirmation prompt tests passed\n'
+
+skip_docker_update='false'
+stage='false'
+docker() { return 0; }
+db_blocked_output=$(validate_db_logger 2>&1)
+[[ -z "$db_blocked_output" ]]
+docker() {
+  if [[ "$1" = 'ps' && "${2:-}" = '-aq' ]]; then
+    printf 'container-one\ncontainer-two\n'
+    return 0
+  fi
+  if [[ "$1" = 'inspect' ]]; then
+    case "$2" in
+      container-one) printf '/container-one db\n' ;;
+      container-two) printf '/container-two local\n' ;;
+      *) return 1 ;;
+    esac
+    return 0
+  fi
+  return 1
+}
+if db_blocked_output=$(validate_db_logger 2>&1); then
+  printf 'db-logger containers were not blocked\n' >&2
+  exit 1
+fi
+[[ "$db_blocked_output" == *'container-one'* ]]
+[[ "$db_blocked_output" != *'container-two'* ]]
+[[ "$db_blocked_output" == *'syno_docker_recovery.sh'* ]]
+docker() {
+  if [[ "$1" = 'ps' && "${2:-}" = '-aq' ]]; then
+    printf 'container-one\n'
+    return 0
+  fi
+  return 1
+}
+if (validate_db_logger) >/dev/null 2>&1; then
+  printf 'db-logger inspection failure was not blocked\n' >&2
+  exit 1
+fi
+skip_docker_update='true'
+docker() { return 1; }
+validate_db_logger
+stage='true'
+skip_docker_update='false'
+validate_db_logger
+stage='false'
+docker() { [[ "$1" = ps ]]; }
+printf 'db-logger preflight tests passed\n'
+
+probe_bin="$test_tmp_dir/runtime-probe-bin"
+mkdir -p "$probe_bin"
+for tool in bash jq realpath readlink timeout mktemp awk; do
+  tool_path=$(type -P "$tool" || true)
+  [[ -n "$tool_path" ]] || { printf 'Required test utility missing: %s\n' "$tool" >&2; exit 1; }
+  ln -s "$tool_path" "$probe_bin/$tool"
+done
+for tool in comm sort sed tar find diff date curl docker insmod lsmod iptables sha256sum; do
+  tool_path=$(type -P "$tool" || true)
+  if [[ -n "$tool_path" ]]; then
+    ln -s "$tool_path" "$probe_bin/$tool"
+  else
+    printf '#!/bin/sh\nexit 0\n' > "$probe_bin/$tool"
+    chmod +x "$probe_bin/$tool"
+  fi
+done
+cat > /usr/syno/bin/synopkg <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat > /usr/syno/sbin/synoservicectl <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x /usr/syno/bin/synopkg /usr/syno/sbin/synoservicectl
+mkdir -p /etc.defaults
+printf 'majorversion="7"\nproductversion="7.2"\n' > /etc.defaults/VERSION
+probe_output=$(PATH="$probe_bin:$PATH" sh "$repo_dir/tests/check-dsm-runtime.sh" 27)
+[[ "$probe_output" == *'DSM major version: 7'* ]]
+[[ "$probe_output" == *'OK      DSM 7 synopkg found'* ]]
+[[ "$probe_output" == *'OK      timeout --foreground works'* ]]
+[[ "$probe_output" == *'OK      readlink -f works'* ]]
+[[ "$probe_output" == *'OK      realpath works'* ]]
+printf 'majorversion="6"\nproductversion="6.2"\n' > /etc.defaults/VERSION
+probe_output=$(PATH="$probe_bin:$PATH" sh "$repo_dir/tests/check-dsm-runtime.sh" 27)
+[[ "$probe_output" == *'OK      DSM 6 synoservicectl found'* ]]
+printf 'majorversion="8"\nproductversion="8.0"\n' > /etc.defaults/VERSION
+if probe_output=$(PATH="$probe_bin:$PATH" sh "$repo_dir/tests/check-dsm-runtime.sh" 27 2>&1); then
+  printf 'Unsupported DSM version passed the runtime probe\n' >&2
+  exit 1
+fi
+[[ "$probe_output" == *'UNSUPPORTED DSM major version: 8'* ]]
+if probe_output=$(PATH="$probe_bin:$PATH" sh "$repo_dir/tests/check-dsm-runtime.sh" invalid 2>&1); then
+  printf 'Non-numeric Docker major version passed the runtime probe\n' >&2
+  exit 1
+fi
+[[ "$probe_output" == *'Target Docker major version must be numeric'* ]]
+printf 'majorversion="7"\nproductversion="7.2"\n' > /etc.defaults/VERSION
+if [[ ! -x /bin/get_key_value ]]; then
+  if probe_output=$(PATH="$probe_bin:$PATH" sh "$repo_dir/tests/check-dsm-runtime.sh" 28 2>&1); then
+    printf 'Docker 28 runtime probe passed without /bin/get_key_value\n' >&2
+    exit 1
+  fi
+  [[ "$probe_output" == *'MISSING /bin/get_key_value'* ]]
+fi
+printf 'DSM runtime probe tests passed\n'
+
+iptables_bin="$test_tmp_dir/iptables-bin"
+mkdir -p "$iptables_bin"
+cat > "$iptables_bin/iptables" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$IPTABLES_LOG"
+case "$*" in
+  *'-C FORWARD -j DOCKER-FORWARD'*) exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$iptables_bin/iptables"
+export IPTABLES_LOG="$test_tmp_dir/iptables.log"
+: > "$IPTABLES_LOG"
+cat > "$SYNO_DOCKER_SCRIPT" <<'EOF'
+#!/bin/sh
+$DockerUpdaterBin predaemonup
+start_docker_daemon
+$DockerUpdaterBin postdaemonup
+EOF
+PATH="$iptables_bin:$PATH" bash "$repo_dir/fix_ipforward.sh" >/dev/null
+PATH="$iptables_bin:$PATH" bash "$repo_dir/fix_ipforward.sh" >/dev/null
+[[ $(grep -Fc 'iptables -P FORWARD ACCEPT' "$SYNO_DOCKER_SCRIPT") -eq 1 ]]
+[[ $(grep -Fc 'iptables -C FORWARD -j DOCKER-FORWARD' "$SYNO_DOCKER_SCRIPT") -eq 1 ]]
+policy_line=$(grep -nF 'iptables -P FORWARD ACCEPT' "$SYNO_DOCKER_SCRIPT" | cut -d: -f1)
+daemon_line=$(grep -nFx 'start_docker_daemon' "$SYNO_DOCKER_SCRIPT" | cut -d: -f1)
+anchor_line=$(grep -nF "\$DockerUpdaterBin postdaemonup" "$SYNO_DOCKER_SCRIPT" | cut -d: -f1)
+[[ "$daemon_line" -lt "$policy_line" && "$policy_line" -lt "$anchor_line" ]]
+grep -Fq -- '-P FORWARD ACCEPT' "$IPTABLES_LOG"
+grep -Fq -- '-I FORWARD 1 -j DOCKER-FORWARD' "$IPTABLES_LOG"
+
+PATH="$iptables_bin:$PATH" bash "$repo_dir/switch_forward.sh" >/dev/null
+[[ $(grep -Fc 'iptables -I FORWARD -i docker0 -j ACCEPT' "$SYNO_DOCKER_SCRIPT") -eq 1 ]]
+[[ $(grep -Fc 'iptables -I FORWARD -o docker0 -j ACCEPT' "$SYNO_DOCKER_SCRIPT") -eq 1 ]]
+[[ $(grep -Fc 'iptables -P FORWARD ACCEPT' "$SYNO_DOCKER_SCRIPT") -eq 0 ]]
+PATH="$iptables_bin:$PATH" bash "$repo_dir/switch_forward.sh" >/dev/null
+[[ $(grep -Fc 'iptables -P FORWARD ACCEPT' "$SYNO_DOCKER_SCRIPT") -eq 1 ]]
+[[ $(grep -Fc 'iptables -I FORWARD -i docker0 -j ACCEPT' "$SYNO_DOCKER_SCRIPT") -eq 0 ]]
+
+cat > "$SYNO_DOCKER_SCRIPT" <<'EOF'
+#!/bin/sh
+$DockerUpdaterBin postdaemonup
+EOF
+forwarding_before=$(sha256sum "$SYNO_DOCKER_SCRIPT" | cut -d' ' -f1)
+PATH="$iptables_bin:$PATH" bash "$repo_dir/switch_forward.sh" >/dev/null
+[[ $(sha256sum "$SYNO_DOCKER_SCRIPT" | cut -d' ' -f1) == "$forwarding_before" ]]
+cat > "$SYNO_DOCKER_SCRIPT" <<'EOF'
+#!/bin/sh
+iptables -P FORWARD ACCEPT
+EOF
+forwarding_before=$(sha256sum "$SYNO_DOCKER_SCRIPT" | cut -d' ' -f1)
+if PATH="$iptables_bin:$PATH" bash "$repo_dir/fix_ipforward.sh" >/dev/null 2>&1; then
+  printf 'Forwarding helper accepted a missing postdaemonup anchor\n' >&2
+  exit 1
+fi
+[[ $(sha256sum "$SYNO_DOCKER_SCRIPT" | cut -d' ' -f1) == "$forwarding_before" ]]
+if PATH="$iptables_bin:$PATH" bash "$repo_dir/switch_forward.sh" >/dev/null 2>&1; then
+  printf 'Forwarding switch accepted a missing postdaemonup anchor\n' >&2
+  exit 1
+fi
+[[ $(sha256sum "$SYNO_DOCKER_SCRIPT" | cut -d' ' -f1) == "$forwarding_before" ]]
+printf 'Standalone forwarding helper tests passed\n'
+
+logging_dir="$test_tmp_dir/add-logging"
+mkdir -p "$logging_dir/test_file"
+cp "$repo_dir/test_file/start-stop-status.withlogging" "$logging_dir/test_file/start-stop-status.withlogging"
+cp "$repo_dir/test_file/start-stop-status" "$SYNO_DOCKER_SCRIPT"
+cp "$SYNO_DOCKER_SCRIPT" "$test_tmp_dir/start-stop-status.expected"
+printf 'n\n' | (cd "$logging_dir" && bash "$repo_dir/add_logging_to_start_script.sh") >/dev/null
+[[ ! -e "$logging_dir/start-stop-status.bkup" ]]
+cmp -s "$test_tmp_dir/start-stop-status.expected" "$SYNO_DOCKER_SCRIPT"
+printf 'YES\n' | (cd "$logging_dir" && bash "$repo_dir/add_logging_to_start_script.sh") >/dev/null
+cmp -s "$test_tmp_dir/start-stop-status.expected" "$logging_dir/start-stop-status.bkup"
+cmp -s "$repo_dir/test_file/start-stop-status.withlogging" "$SYNO_DOCKER_SCRIPT"
+[[ $(stat -c '%a' "$SYNO_DOCKER_SCRIPT") == '744' ]]
+printf 'Standalone logging helper tests passed\n'

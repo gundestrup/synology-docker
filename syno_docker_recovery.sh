@@ -18,7 +18,7 @@ Actions:
   export-all [ROOT] [--fresh-anonymous-volumes]
                                  Export all non-Compose containers
   validate ROOT CONTAINER        Validate generated Compose output
-  recreate ROOT CONTAINER        Remove a stopped container and recreate it
+  recreate ROOT CONTAINER        Stop, remove, and recreate a container
   compose-recreate COMPOSE_FILE  Run Compose force-recreate for a project
   manifest [ROOT]                Show recovery manifest status
   backup                         Create an updater backup
@@ -167,8 +167,9 @@ recreate_export() {
   compose -f "$compose_file" config >/dev/null || fail "Generated Compose configuration is invalid"
   logger=$(docker inspect "$name" --format '{{.HostConfig.LogConfig.Type}}') || fail "Container not found: $name"
   printf 'Container %s currently uses logger: %s\n' "$name" "$logger"
-  printf 'This removes the existing container record, not bind-mounted folders or named volumes.\n'
+  printf 'This stops and removes the existing container record, not bind-mounted folders or named volumes.\n'
   confirm_word 'RECREATE'
+  docker stop "$name"
   docker rm "$name"
   compose -f "$compose_file" up -d --force-recreate
 }

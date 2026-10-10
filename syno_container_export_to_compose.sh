@@ -533,5 +533,5 @@ printf 'Wrote %s\n' "$compose_file"
 if [[ -f "$env_file" ]]; then
   printf 'Wrote private environment file %s\n' "$env_file"
 fi
-printf 'Review the files, remove or rename the old stopped container, then run:\n'
+printf 'Review the files, stop the old container, then remove or rename it and run:\n'
 printf '  docker-compose -f %q up -d --force-recreate\n' "$compose_file"

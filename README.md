@@ -114,6 +114,8 @@ This:
 - Sets Docker’s default log driver to `local`
 - Restarts Docker
 
+The updater now refuses to install a new Docker engine while any container still uses the removed `db` logger. Fix those containers first; `syno_docker_recovery.sh` can export and recreate them.
+
 Then check which containers are _still_ using `db`:
 
 ```bash
@@ -144,6 +146,7 @@ For a non‑Compose container, generate a reviewed Compose file directly from `d
 ```bash
 ./syno_docker_list_containers.sh --compose-dir /volume1/docker/container-name container-name
 cd /volume1/docker/container-name
+sudo docker stop container-name
 sudo docker rm container-name
 sudo docker compose -f container-name.docker-compose.yml up -d --force-recreate
 ```
@@ -157,7 +160,7 @@ For a guided one-container-at-a-time recovery, use the container-data root and `
   --next
 ```
 
-This selects the first container still using `db` and writes its files under `/volume1/docker/<name>/`. After reviewing the files, removing the old stopped container, and successfully recreating it, run the same command again to process the next `db` container. If the next pending container is already Compose-managed, the script prints its `docker compose up -d --force-recreate` command instead of generating another file.
+This selects the first container still using `db` and writes its files under `/volume1/docker/<name>/`. After reviewing the files, stopping and removing the old container, and successfully recreating it, run the same command again to process the next `db` container. If the next pending container is already Compose-managed, the script prints its `docker compose up -d --force-recreate` command instead of generating another file.
 
 To convert every non‑Compose container into separate directories, omit `--next`:
 
@@ -171,7 +174,7 @@ The script maintains a private JSON state file at `<compose-dir>/compose-export-
 
 The converter writes a private `<name>.env` file containing environment values and a `<name>.docker-compose.yml` file that forces the `local` logger. Anonymous Docker volumes with generated 64-character names are preserved as `external` volumes by default so no data is silently discarded. If review shows a volume such as `HASH:/storage:rw` is disposable, add `--fresh-anonymous-volumes`; the generated service then uses the anonymous mount `/storage:rw`, and the hash is omitted from the top-level `volumes:` block so Docker creates a fresh volume. Do not use that option when the anonymous volume might contain required data.
 
-On a repeat run, identical output is reported as `Already converted`. If an existing Compose file differs, it is not overwritten: the YAML diff is shown and the new candidate is saved as `<name>.docker-compose.yml.generated`; differing environment data is reported without printing values and saved as `<name>.env.generated`. Use `--force` only after reviewing those differences to replace the existing files. It also accepts a Synology Container Manager JSON export through `syno_container_export_to_compose.sh`; when using that format, pass `--volume-root /volumeN` if the NAS data is not under `/volume1`. Review mounts and ports before running. Removing the old stopped container does not remove its bind-mounted folders or named volumes.
+On a repeat run, identical output is reported as `Already converted`. If an existing Compose file differs, it is not overwritten: the YAML diff is shown and the new candidate is saved as `<name>.docker-compose.yml.generated`; differing environment data is reported without printing values and saved as `<name>.env.generated`. Use `--force` only after reviewing those differences to replace the existing files. It also accepts a Synology Container Manager JSON export through `syno_container_export_to_compose.sh`; when using that format, pass `--volume-root /volumeN` if the NAS data is not under `/volume1`. Review mounts and ports before running. Stopping and removing the old container does not remove its bind-mounted folders or named volumes.
 
 Re‑run `syno_docker_list_containers.sh` until **everything** says `local`. The listing includes stopped containers so `db`-logger failures remain visible.
 

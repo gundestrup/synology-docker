@@ -221,6 +221,45 @@ detect_current_versions() {
 }
 
 #======================================================================================================================
+# Blocks a Docker engine update when any container still uses the removed 'db' log driver. The daemon's
+# 'log-driver' setting only applies to newly created containers, so existing 'db' containers must be
+# recreated before the engine is replaced.
+#======================================================================================================================
+# Globals:
+#   - skip_docker_update
+#   - stage
+# Outputs:
+#   Lists affected containers and terminates with non-zero exit code when any still use the 'db' logger,
+#   or when the logger state cannot be inspected.
+#======================================================================================================================
+validate_db_logger() {
+  local container db_containers=() container_ids inspect_output logger
+
+  if [[ "${stage}" = 'true' ]] || [[ "${skip_docker_update}" = 'true' ]]; then
+    return
+  fi
+  if ! container_ids=$(docker ps -aq 2>/dev/null); then
+    terminate "Could not inspect containers; resolve the 'db' logger state before updating Docker"
+  fi
+
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    if ! inspect_output=$(docker inspect "$container" --format '{{.Name}} {{.HostConfig.LogConfig.Type}}' 2>/dev/null); then
+      terminate "Could not inspect container '$container'; resolve the 'db' logger state before updating Docker"
+    fi
+    logger=${inspect_output##* }
+    [[ "$logger" = 'db' ]] && db_containers+=("${inspect_output% *}")
+  done <<< "$container_ids"
+
+  if [[ "${#db_containers[@]}" -gt 0 ]]; then
+    printf '%s\n' "Containers still using the 'db' logger:" >&2
+    printf '  %s\n' "${db_containers[@]##/}" >&2
+    printf '%s\n' "Run 'syno_docker_recovery.sh' to export and recreate them before updating Docker." >&2
+    terminate "Resolve the 'db' logger state before updating Docker"
+  fi
+}
+
+#======================================================================================================================
 # Verifies the host has the right CPU, runs DSM and that Docker (including Compose) is already installed.
 #======================================================================================================================
 # Globals:
@@ -1411,6 +1450,7 @@ main() {
       total_steps=8
       detect_current_versions
       validate_syno_tools
+      validate_db_logger
       execute_prepare
       define_target_download
       validate_offline_target
@@ -1458,6 +1498,7 @@ main() {
       total_steps=12
       detect_current_versions
       validate_syno_tools
+      validate_db_logger
       execute_prepare
       define_target_version
       define_update
