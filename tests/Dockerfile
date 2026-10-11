@@ -1,5 +1,5 @@
 # Runs as root because the mocked tests write DSM paths under /usr and /var.
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends bash jq && rm -rf /var/lib/apt/lists/*
 

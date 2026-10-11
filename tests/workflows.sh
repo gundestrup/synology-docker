@@ -231,7 +231,7 @@ KERNEL_VERSION='4.4.302+'
 PLATFORM_VERSION=apollolake
 # shellcheck disable=SC2218 # The test intentionally overrides this function below.
 module_checksums
-[[ "$expected_ip4" == 'bdc0737e3193c3fadc0a77e8fc04a67ed3293c05c2c1b1b4105bf9e294f92345' ]]
+[[ "$expected_ip4" == 'ab4462efdcb7ced586234bebef4f798bf54f747ec3e639f155a3a09b73545fdc' ]]
 PLATFORM_VERSION=unknown
 if module_checksums >/dev/null 2>&1; then
   printf 'Unknown kernel module platform was accepted\n' >&2
@@ -585,7 +585,7 @@ if db_blocked_output=$(validate_db_logger 2>&1); then
 fi
 [[ "$db_blocked_output" == *'container-one'* ]]
 [[ "$db_blocked_output" != *'container-two'* ]]
-[[ "$db_blocked_output" == *'syno_docker_recovery.sh'* ]]
+[[ "$db_blocked_output" == *'stateful-docker-migration-flow'* ]]
 docker() {
   if [[ "$1" = 'ps' && "${2:-}" = '-aq' ]]; then
     printf 'container-one\n'

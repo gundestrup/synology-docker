@@ -254,7 +254,9 @@ validate_db_logger() {
   if [[ "${#db_containers[@]}" -gt 0 ]]; then
     printf '%s\n' "Containers still using the 'db' logger:" >&2
     printf '  %s\n' "${db_containers[@]##/}" >&2
-    printf '%s\n' "Run 'syno_docker_recovery.sh' to export and recreate them before updating Docker." >&2
+    printf '%s\n' "Recreate them before updating Docker; 'stateful-docker-migration-flow'" >&2
+    printf '%s\n' "(https://github.com/gundestrup/stateful-docker-migration-flow) can export" >&2
+    printf '%s\n' "them to Compose projects." >&2
     terminate "Resolve the 'db' logger state before updating Docker"
   fi
 }

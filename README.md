@@ -70,34 +70,6 @@ git clone https://github.com/telnetdoogie-labs/synology-docker
 cd synology-docker
 ```
 
-## Guided recovery and update menu
-
-The easiest entry point is:
-
-```bash
-./syno_docker_recovery.sh
-```
-
-The menu starts with three workflows and shows the recommended order under each:
-
-1. **Upgrade Docker/Compose** — runtime check, inventory, backup, update, verification.
-2. **Downgrade or restore Docker/Compose** — runtime check, backup, restore/downgrade, verification.
-3. **Convert containers** — inventory, export, validation, recreation, manifest/status verification.
-
-Each workflow opens a submenu with only its relevant checks and actions. The menu does not delete a container, run an update, downgrade, or restore a backup without typed confirmation. Environment values remain in private `.env` files and are not shown.
-
-The same actions can be run non-interactively, for example:
-
-```bash
-./syno_docker_recovery.sh preflight 29
-./syno_docker_recovery.sh list
-./syno_docker_recovery.sh next /volume1/docker/recover
-./syno_docker_recovery.sh validate /volume1/docker/recover crashplan
-./syno_docker_recovery.sh manifest /volume1/docker/recover
-```
-
-`recreate`, `update`, and `restore` are deliberately available but require confirmation because they remove a container record, replace Docker binaries, or roll back configuration.
-
 ## 🚀 First‑time upgrade (do this once, carefully)
 
 > [!NOTE]
@@ -114,7 +86,7 @@ This:
 - Sets Docker’s default log driver to `local`
 - Restarts Docker
 
-The updater now refuses to install a new Docker engine while any container still uses the removed `db` logger. Fix those containers first; `syno_docker_recovery.sh` can export and recreate them.
+The updater now refuses to install a new Docker engine while any container still uses the removed `db` logger. Fix those containers first: recreate them from their Compose project, or use a migration tool such as [stateful-docker-migration-flow](https://github.com/gundestrup/stateful-docker-migration-flow) to export non‑Compose containers to reviewed Compose projects before recreating them.
 
 Then check which containers are _still_ using `db`:
 
@@ -141,40 +113,12 @@ cd /volume1/docker/jellyfin
 docker-compose up -d --force-recreate
 ```
 
-For a non‑Compose container, generate a reviewed Compose file directly from `docker inspect`:
+For a **non‑Compose** container, `syno_docker_list_containers.sh` prints a best‑guess `docker run` command you can adapt manually. For a safer path, the companion tool [stateful-docker-migration-flow](https://github.com/gundestrup/stateful-docker-migration-flow) generates a reviewed Compose project per container (private `.env`, manifest tracking, typed `RECREATE` confirmation) so a non‑Compose container can be brought under Compose management:
 
 ```bash
-./syno_docker_list_containers.sh --compose-dir /volume1/docker/container-name container-name
-cd /volume1/docker/container-name
-sudo docker stop container-name
-sudo docker rm container-name
-sudo docker compose -f container-name.docker-compose.yml up -d --force-recreate
+# On the NAS, with the migration tool checked out:
+./sdmf            # guided menu: inventory -> export -> validate -> recreate
 ```
-
-For a guided one-container-at-a-time recovery, use the container-data root and `--container-dirs --next`:
-
-```bash
-./syno_docker_list_containers.sh \
-  --compose-dir /volume1/docker \
-  --container-dirs \
-  --next
-```
-
-This selects the first container still using `db` and writes its files under `/volume1/docker/<name>/`. After reviewing the files, stopping and removing the old container, and successfully recreating it, run the same command again to process the next `db` container. If the next pending container is already Compose-managed, the script prints its `docker compose up -d --force-recreate` command instead of generating another file.
-
-To convert every non‑Compose container into separate directories, omit `--next`:
-
-```bash
-./syno_docker_list_containers.sh \
-  --compose-dir /volume1/docker/recreated-containers \
-  --container-dirs
-```
-
-The script maintains a private JSON state file at `<compose-dir>/compose-export-manifest.json` (or the path supplied with `--manifest`). It records image names, logger values, output paths, and statuses such as `written`, `already-converted`, `candidate-generated`, `compose-managed`, and `updated`; it does not record environment values.
-
-The converter writes a private `<name>.env` file containing environment values and a `<name>.docker-compose.yml` file that forces the `local` logger. Anonymous Docker volumes with generated 64-character names are preserved as `external` volumes by default so no data is silently discarded. If review shows a volume such as `HASH:/storage:rw` is disposable, add `--fresh-anonymous-volumes`; the generated service then uses the anonymous mount `/storage:rw`, and the hash is omitted from the top-level `volumes:` block so Docker creates a fresh volume. Do not use that option when the anonymous volume might contain required data.
-
-On a repeat run, identical output is reported as `Already converted`. If an existing Compose file differs, it is not overwritten: the YAML diff is shown and the new candidate is saved as `<name>.docker-compose.yml.generated`; differing environment data is reported without printing values and saved as `<name>.env.generated`. Use `--force` only after reviewing those differences to replace the existing files. It also accepts a Synology Container Manager JSON export through `syno_container_export_to_compose.sh`; when using that format, pass `--volume-root /volumeN` if the NAS data is not under `/volume1`. Review mounts and ports before running. Stopping and removing the old container does not remove its bind-mounted folders or named volumes.
 
 Re‑run `syno_docker_list_containers.sh` until **everything** says `local`. The listing includes stopped containers so `db`-logger failures remain visible.
 

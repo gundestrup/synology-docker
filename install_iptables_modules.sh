@@ -33,7 +33,7 @@ INSERT="${INSERT}   insmod ${MODULES_FOLDER}/${IP4MODULE}\n"
 INSERT="${INSERT}   insmod ${MODULES_FOLDER}/${IP6MODULE}"
 KERNEL_VERSION=$(uname -r)
 PLATFORM_VERSION=$(/bin/get_key_value /etc.defaults/synoinfo.conf platform_name)
-MODULE_SOURCE_COMMIT='fb894e2c6f7d5c2e81e4c59c27721081f7d487f9'
+MODULE_SOURCE_COMMIT='beee369a29c33ee460909e76c479282181d33a17'
 MODULE_BASE="https://raw.githubusercontent.com/telnetdoogie-labs/synology-kernelmodules/${MODULE_SOURCE_COMMIT}/compiled_modules"
 IP4DL="${MODULE_BASE}/${KERNEL_VERSION}/${PLATFORM_VERSION}/${IP4MODULE}"
 IP6DL="${MODULE_BASE}/${KERNEL_VERSION}/${PLATFORM_VERSION}/${IP6MODULE}"
@@ -99,8 +99,8 @@ modules_available_for_download() {
 module_checksums() {
   case "${KERNEL_VERSION}/${PLATFORM_VERSION}" in
     '4.4.302+/apollolake')
-      expected_ip4='bdc0737e3193c3fadc0a77e8fc04a67ed3293c05c2c1b1b4105bf9e294f92345'
-      expected_ip6='8214a571d7a2359fd59999d1b178dce521b1793db968eeb49f37e2ca51751a7f'
+      expected_ip4='ab4462efdcb7ced586234bebef4f798bf54f747ec3e639f155a3a09b73545fdc'
+      expected_ip6='b701b518d7f7f328b6a24b8d0dbc5b8ca94019c61d2a23b2f918bedc549156bd'
       ;;
     '4.4.302+/broadwell'|'4.4.302+/broadwellnk')
       expected_ip4='4eedf6d6f3fa33d0eb06db1233bcff07674e0c6971c8fa7d1e1b2f4dafcf2853'
@@ -134,7 +134,7 @@ module_checksums() {
       expected_ip4='d44dcd11d10f900deef2c5a0e61fa473172c8fdd7d1e187402a8e841fe0efc75'
       expected_ip6='646f6a68d49950c5e6e1037eb14a203268e4f01e0338e93eb5f5ed4ca125469f'
       ;;
-    '5.10.55+/v1000nk')
+    '5.10.55+/geminilakenk'|'5.10.55+/v1000nk')
       expected_ip4='682adcdef5dc0e4d493b198243b3ee21a687110dd1786e22e89ca58a025ed64f'
       expected_ip6='d9e07565d91594fc2650dc3966e74c2c0297e7a11a3a43318d117a6c83885a7a'
       ;;

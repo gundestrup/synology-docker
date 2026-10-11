@@ -35,8 +35,9 @@ jobs:
 
       - name: Install ShellCheck
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck
+          curl -fsSLo /tmp/shellcheck.tar.xz https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  /tmp/shellcheck.tar.xz" | sha256sum -c -
+          sudo tar -xJf /tmp/shellcheck.tar.xz -C /usr/local/bin --strip-components=1 shellcheck-v0.11.0/shellcheck
 
       - name: Check Bash syntax
         run: bash -n ./*.sh tests/*.sh
@@ -52,7 +53,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Semgrep
-        run: pip3 install --only-binary ":all:" semgrep==1.176.0
+        run: pip3 install --only-binary ":all:" -r .github/requirements-ci.txt
 
       - name: Run Semgrep security scan
         run: semgrep scan --config p/default --error --metrics=off .
