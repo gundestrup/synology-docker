@@ -4,6 +4,7 @@
 
 - Added GitHub Actions CI for the Docker regression suite, Bash syntax checks, ShellCheck, and Semgrep without requiring SonarCloud or Semgrep account tokens.
 - Added SonarCloud Automatic Analysis configuration that excludes only the disposable `tests/Dockerfile`, whose intentional root user is required by the mocked DSM fixture paths.
+- Locked Semgrep's full CI dependency graph with SHA-256 hashes and a pinned Python 3.12 runner so the CI install is reproducible and hash-verified.
 - Restricted curl downloads and redirects to HTTPS with a TLS 1.2 minimum so update and kernel-module downloads cannot be downgraded by a redirect.
 - Standardized conditional tests in Bash-only scripts on `[[ ... ]]`; generated `/bin/sh` helpers and DSM startup snippets intentionally retain POSIX `[ ... ]`.
 - Documented the disposable test image's root user as intentional because mocked DSM paths require privileged filesystem access.
