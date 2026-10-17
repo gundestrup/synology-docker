@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Updated the CI Semgrep pin to 1.180.0 and refreshed its hash-locked wheel entry.
 - Added GitHub Actions CI for the Docker regression suite, Bash syntax checks, ShellCheck, and Semgrep without requiring SonarCloud or Semgrep account tokens.
 - Added SonarCloud Automatic Analysis configuration that excludes only the disposable `tests/Dockerfile`, whose intentional root user is required by the mocked DSM fixture paths.
 - Locked Semgrep's full CI dependency graph with SHA-256 hashes and a pinned Python 3.12 runner so the CI install is reproducible and hash-verified.
