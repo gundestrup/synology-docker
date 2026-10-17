@@ -5,7 +5,9 @@
 >
 > Originally forked from [markdumay/synology-docker](https://github.com/markdumay/synology-docker)
 
-[![CI](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml/badge.svg)](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml) ![Last Commit][synology-docker-last-commit] ![Issues][synology-docker-issues] ![Pull Requests][synology-docker-pulls] ![License][synology-docker-license] [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gundestrup/synology-docker)
+[![CI](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml/badge.svg)](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml) [![Semgrep](https://img.shields.io/badge/Semgrep-security%20scan-2c7a4b?logo=semgrep&logoColor=white)](https://github.com/gundestrup/synology-docker/actions/workflows/ci.yml) [![SonarCloud](https://sonarcloud.io/api/project_badges/measure?project=gundestrup_synology-docker&metric=alert_status)](https://sonarcloud.io/dashboard?id=gundestrup_synology-docker) [![CodeFactor](https://www.codefactor.io/repository/github/gundestrup/synology-docker/badge)](https://www.codefactor.io/repository/github/gundestrup/synology-docker)
+
+![Last Commit][synology-docker-last-commit] ![Issues][synology-docker-issues] ![Pull Requests][synology-docker-pulls] ![License][synology-docker-license] [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gundestrup/synology-docker)
 
 ## Why this exists
 
